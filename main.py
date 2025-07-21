@@ -3,9 +3,9 @@ import json
 import logging
 from typing import Dict, Optional
 
-from aiogram import Bot, Dispatcher, types
+from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
-from aiogram.types import Message
+from aiogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup
 
 from config import TELEGRAM_BOT_TOKEN
 from parser import parse_slots, complete_slots
@@ -16,6 +16,17 @@ logger = logging.getLogger(__name__)
 
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
 dp = Dispatcher()
+
+# Кнопки подтверждения/отмены
+confirm_keyboard = InlineKeyboardMarkup(
+    inline_keyboard=[
+        [
+            InlineKeyboardButton(text='Подтвердить', callback_data='confirm'),
+            InlineKeyboardButton(text='Отклонить', callback_data='reject'),
+        ],
+        [InlineKeyboardButton(text='Отмена', callback_data='cancel')],
+    ]
+)
 
 # Сохранение слотов по user_id
 user_data: Dict[int, Dict[str, Optional[str]]] = {}
@@ -88,9 +99,9 @@ async def handle_slots(message: Message):
     else:
         summary = (
             f"Подтвердите поездку из {slots['from']} в {slots['to']} "
-            f"{slots['date']} на {slots['transport']}. (да/нет)"
+            f"{slots['date']} на {slots['transport']}"
         )
-        await message.answer(summary)
+        await message.answer(summary, reply_markup=confirm_keyboard)
         user_data[uid]['confirm'] = True
 
 
@@ -101,12 +112,46 @@ async def handle_message(message: Message):
         if message.text.lower() in {'да', 'yes', 'confirm', 'подтвердить'}:
             slots = user_data.pop(uid)
             slots.pop('confirm', None)
-            await message.answer(f'\n```\n{json.dumps(slots, ensure_ascii=False, indent=2)}\n```')
-        else:
+            await message.answer(
+                f"\n```\n{json.dumps(slots, ensure_ascii=False, indent=2)}\n```"
+            )
+        elif message.text.lower() in {'отмена', 'cancel'}:
             user_data.pop(uid, None)
             await message.answer('Бронирование отменено. Начните заново.')
+        else:
+            user_data.pop(uid, None)
+            await message.answer('Бронирование отклонено. Начните заново.')
     else:
         await handle_slots(message)
+
+
+@dp.callback_query(F.data == 'confirm')
+async def cb_confirm(query: types.CallbackQuery):
+    uid = query.from_user.id
+    slots = user_data.pop(uid, None)
+    await query.message.edit_reply_markup()
+    if slots:
+        slots.pop('confirm', None)
+        await query.message.answer(
+            f"\n```\n{json.dumps(slots, ensure_ascii=False, indent=2)}\n```"
+        )
+    await query.answer()
+
+
+@dp.callback_query(F.data == 'reject')
+async def cb_reject(query: types.CallbackQuery):
+    user_data.pop(query.from_user.id, None)
+    await query.message.edit_reply_markup()
+    await query.message.answer('Бронирование отклонено. Начните заново.')
+    await query.answer()
+
+
+@dp.callback_query(F.data == 'cancel')
+async def cb_cancel(query: types.CallbackQuery):
+    user_data.pop(query.from_user.id, None)
+    await query.message.edit_reply_markup()
+    await query.message.answer('Бронирование отменено. Начните заново.')
+    await query.answer()
 
 
 async def main():
