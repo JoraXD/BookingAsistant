@@ -21,6 +21,7 @@ SYSTEM_PROMPT = (
 
 def parse_slots(text: str) -> Dict[str, Optional[str]]:
     """Отправляет текст в YandexGPT и возвращает словарь слотов."""
+    logger.info("User message: %s", text)
     headers = {
         'Authorization': f'Bearer {YANDEX_IAM_TOKEN}',
         'Content-Type': 'application/json',
@@ -42,6 +43,7 @@ def parse_slots(text: str) -> Dict[str, Optional[str]]:
         response.raise_for_status()
         data = response.json()
         answer = data.get('result', {}).get('alternatives', [{}])[0].get('message', {}).get('text', '')
+        logger.info("Yandex response: %s", answer)
         slots = json.loads(answer)
         return {
             'from': slots.get('from'),
