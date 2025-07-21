@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 from typing import Dict, Optional
 
 import requests
@@ -26,6 +27,19 @@ COMPLETE_PROMPT = (
     'Формат даты YYYY-MM-DD.'
 )
 
+def _extract_json(text: str) -> str:
+    """Return JSON string from YandexGPT answer."""
+    # remove code fences like ```json ... ```
+    text = text.strip()
+    if text.startswith('```'):
+        # strip the opening and closing fences
+        text = text.strip('`')
+        text = text.lstrip('json').strip()
+    # find first JSON object
+    match = re.search(r'\{.*\}', text, re.DOTALL)
+    if match:
+        return match.group(0)
+    return text
 
 def parse_slots(text: str) -> Dict[str, Optional[str]]:
     """Отправляет текст в YandexGPT и возвращает словарь слотов."""
@@ -52,7 +66,7 @@ def parse_slots(text: str) -> Dict[str, Optional[str]]:
         data = response.json()
         answer = data.get('result', {}).get('alternatives', [{}])[0].get('message', {}).get('text', '')
         logger.info("Yandex response: %s", answer)
-        slots = json.loads(answer)
+        slots = json.loads(_extract_json(answer))
         return {
             'from': slots.get('from'),
             'to': slots.get('to'),
@@ -89,7 +103,8 @@ def complete_slots(slots: Dict[str, Optional[str]]) -> Dict[str, Optional[str]]:
         data = response.json()
         answer = data.get('result', {}).get('alternatives', [{}])[0].get('message', {}).get('text', '')
         logger.info("Yandex completion: %s", answer)
-        updated = json.loads(answer)
+        updated = json.loads(_extract_json(answer))
+
         return {
             'from': updated.get('from'),
             'to': updated.get('to'),
