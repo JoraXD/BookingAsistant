@@ -42,7 +42,12 @@ def search_buses(origin: str, destination: str, date: str) -> List[Dict]:
         resp.raise_for_status()
         data = resp.json()
         return data.get("routes") or data.get("items") or []
-
     except Exception as e:
         logging.exception("Failed to fetch buses: %s", e)
         return []
+
+
+def build_routes_url(origin: str, destination: str, date: str) -> str:
+    """Return URL to atlasbus with pre-filled route search."""
+    return f"https://atlasbus.ru/Маршруты/{origin}/{destination}?date={date}"
+
