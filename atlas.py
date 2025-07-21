@@ -51,3 +51,13 @@ def build_routes_url(origin: str, destination: str, date: str) -> str:
     """Return URL to atlasbus with pre-filled route search."""
     return f"https://atlasbus.ru/Маршруты/{origin}/{destination}?date={date}"
 
+
+def link_has_routes(origin: str, destination: str, date: str) -> bool:
+    """Return True if atlasbus page for given parameters is not 404."""
+    url = build_routes_url(origin, destination, date)
+    try:
+        resp = requests.get(url, allow_redirects=True, timeout=30)
+        return resp.status_code != 404
+    except Exception as e:
+        logging.exception("Failed to check routes url: %s", e)
+        return False

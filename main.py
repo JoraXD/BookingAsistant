@@ -9,7 +9,7 @@ from aiogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup
 
 from config import TELEGRAM_BOT_TOKEN
 from parser import parse_slots, complete_slots
-from atlas import search_buses, build_routes_url
+from atlas import build_routes_url, link_has_routes
 
 from utils import normalize_date
 
@@ -115,19 +115,9 @@ async def handle_message(message: Message):
             slots = user_data.pop(uid)
             slots.pop('confirm', None)
             if slots.get('transport', '').lower() in {'автобус', 'bus', 'автобусы'}:
-                buses = search_buses(slots['from'], slots['to'], slots['date'])
-                if buses:
-                    lines = []
-                    for b in buses:
-                        depart = b.get('departure')
-                        arrive = b.get('arrival')
-                        price = b.get('price')
-                        line = f"{depart} → {arrive} — {price}"
-                        lines.append(line)
-                    url = build_routes_url(slots['from'], slots['to'], slots['date'])
-                    lines.append(url)
+                url = build_routes_url(slots['from'], slots['to'], slots['date'])
+                if link_has_routes(slots['from'], slots['to'], slots['date']):
 
-                    await message.answer("\n".join(lines))
                 else:
                     await message.answer('Рейсы не найдены.')
             await message.answer(
@@ -151,19 +141,10 @@ async def cb_confirm(query: types.CallbackQuery):
     if slots:
         slots.pop('confirm', None)
         if slots.get('transport', '').lower() in {'автобус', 'bus', 'автобусы'}:
-            buses = search_buses(slots['from'], slots['to'], slots['date'])
-            if buses:
-                lines = []
-                for b in buses:
-                    depart = b.get('departure')
-                    arrive = b.get('arrival')
-                    price = b.get('price')
-                    line = f"{depart} → {arrive} — {price}"
-                    lines.append(line)
-                url = build_routes_url(slots['from'], slots['to'], slots['date'])
-                lines.append(url)
+            url = build_routes_url(slots['from'], slots['to'], slots['date'])
+            if link_has_routes(slots['from'], slots['to'], slots['date']):
+                await query.message.answer(url)
 
-                await query.message.answer("\n".join(lines))
             else:
                 await query.message.answer('Рейсы не найдены.')
         await query.message.answer(
