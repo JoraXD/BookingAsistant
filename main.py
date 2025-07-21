@@ -8,7 +8,7 @@ from aiogram.filters import Command
 from aiogram.types import Message
 
 from config import TELEGRAM_BOT_TOKEN
-from parser import parse_slots
+from parser import parse_slots, complete_slots
 from utils import normalize_date
 
 logging.basicConfig(level=logging.INFO)
@@ -67,6 +67,9 @@ async def handle_slots(message: Message):
         value = parsed.get(key)
         if value:
             slots[key] = value
+
+    # отправляем уже известные данные для дополнения
+    slots = complete_slots(slots)
 
     user_data[uid] = slots
     missing = get_missing_slots(slots)
