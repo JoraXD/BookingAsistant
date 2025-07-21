@@ -43,6 +43,21 @@ def _extract_json(text: str) -> str:
     return text
 
 
+def _extract_json(text: str) -> str:
+    """Return JSON string from YandexGPT answer."""
+    # remove code fences like ```json ... ```
+    text = text.strip()
+    if text.startswith('```'):
+        # strip the opening and closing fences
+        text = text.strip('`')
+        text = text.lstrip('json').strip()
+    # find first JSON object
+    match = re.search(r'\{.*\}', text, re.DOTALL)
+    if match:
+        return match.group(0)
+    return text
+
+
 def parse_slots(text: str, question: Optional[str] = None) -> Dict[str, Optional[str]]:
     """Отправляет текст (и контекст вопроса) в YandexGPT и возвращает словарь слотов."""
     if question:
@@ -108,6 +123,7 @@ def complete_slots(slots: Dict[str, Optional[str]]) -> Dict[str, Optional[str]]:
         answer = data.get('result', {}).get('alternatives', [{}])[0].get('message', {}).get('text', '')
         logger.info("Yandex completion: %s", answer)
         updated = json.loads(_extract_json(answer))
+
         return {
             'from': updated.get('from'),
             'to': updated.get('to'),
