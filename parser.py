@@ -27,6 +27,7 @@ COMPLETE_PROMPT = (
     'Формат даты YYYY-MM-DD.'
 )
 
+
 def _extract_json(text: str) -> str:
     """Return JSON string from YandexGPT answer."""
     # remove code fences like ```json ... ```
@@ -41,8 +42,26 @@ def _extract_json(text: str) -> str:
         return match.group(0)
     return text
 
-def parse_slots(text: str) -> Dict[str, Optional[str]]:
-    """Отправляет текст в YandexGPT и возвращает словарь слотов."""
+
+def _extract_json(text: str) -> str:
+    """Return JSON string from YandexGPT answer."""
+    # remove code fences like ```json ... ```
+    text = text.strip()
+    if text.startswith('```'):
+        # strip the opening and closing fences
+        text = text.strip('`')
+        text = text.lstrip('json').strip()
+    # find first JSON object
+    match = re.search(r'\{.*\}', text, re.DOTALL)
+    if match:
+        return match.group(0)
+    return text
+
+
+def parse_slots(text: str, question: Optional[str] = None) -> Dict[str, Optional[str]]:
+    """Отправляет текст (и контекст вопроса) в YandexGPT и возвращает словарь слотов."""
+    if question:
+        text = f"Вопрос: {question}\nОтвет: {text}"
     logger.info("User message: %s", text)
     headers = {
         'Authorization': f'Bearer {YANDEX_IAM_TOKEN}',
