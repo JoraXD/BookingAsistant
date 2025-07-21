@@ -51,14 +51,21 @@ async def handle_slots(message: Message):
     uid = message.from_user.id
     slots = user_data.get(uid, {'from': None, 'to': None, 'date': None, 'transport': None})
 
+    # сначала пытаемся вытащить дату напрямую из текста пользователя
+    user_date = normalize_date(text)
+
     parsed = parse_slots(text)
+
+    if user_date:
+        parsed['date'] = user_date
+    elif parsed.get('date'):
+        # нормализуем дату, возвращённую YandexGPT
+        parsed['date'] = normalize_date(parsed['date']) or parsed['date']
 
     # обновляем слоты
     for key in ['from', 'to', 'date', 'transport']:
         value = parsed.get(key)
         if value:
-            if key == 'date':
-                value = normalize_date(value) or value
             slots[key] = value
 
     user_data[uid] = slots
