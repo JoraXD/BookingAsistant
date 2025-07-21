@@ -10,6 +10,7 @@ from aiogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup
 from config import TELEGRAM_BOT_TOKEN
 from parser import parse_slots, complete_slots
 from atlas import build_routes_url, link_has_routes
+
 from utils import normalize_date
 
 logging.basicConfig(level=logging.INFO)
@@ -116,7 +117,7 @@ async def handle_message(message: Message):
             if slots.get('transport', '').lower() in {'автобус', 'bus', 'автобусы'}:
                 url = build_routes_url(slots['from'], slots['to'], slots['date'])
                 if link_has_routes(slots['from'], slots['to'], slots['date']):
-                    await message.answer(url)
+
                 else:
                     await message.answer('Рейсы не найдены.')
             await message.answer(
@@ -143,6 +144,7 @@ async def cb_confirm(query: types.CallbackQuery):
             url = build_routes_url(slots['from'], slots['to'], slots['date'])
             if link_has_routes(slots['from'], slots['to'], slots['date']):
                 await query.message.answer(url)
+
             else:
                 await query.message.answer('Рейсы не найдены.')
         await query.message.answer(
