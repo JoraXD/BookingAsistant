@@ -9,6 +9,7 @@ from aiogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup
 
 from config import TELEGRAM_BOT_TOKEN
 from parser import parse_slots, complete_slots
+from atlas import search_buses, build_routes_url
 from utils import normalize_date
 
 logging.basicConfig(level=logging.INFO)
@@ -112,6 +113,21 @@ async def handle_message(message: Message):
         if message.text.lower() in {'да', 'yes', 'confirm', 'подтвердить'}:
             slots = user_data.pop(uid)
             slots.pop('confirm', None)
+            if slots.get('transport', '').lower() in {'автобус', 'bus', 'автобусы'}:
+                buses = search_buses(slots['from'], slots['to'], slots['date'])
+                if buses:
+                    lines = []
+                    for b in buses:
+                        depart = b.get('departure')
+                        arrive = b.get('arrival')
+                        price = b.get('price')
+                        line = f"{depart} → {arrive} — {price}"
+                        lines.append(line)
+                    url = build_routes_url(slots['from'], slots['to'], slots['date'])
+                    lines.append(url)
+                    await message.answer("\n".join(lines))
+                else:
+                    await message.answer('Рейсы не найдены.')
             await message.answer(
                 f"\n```\n{json.dumps(slots, ensure_ascii=False, indent=2)}\n```"
             )
@@ -132,6 +148,21 @@ async def cb_confirm(query: types.CallbackQuery):
     await query.message.edit_reply_markup()
     if slots:
         slots.pop('confirm', None)
+        if slots.get('transport', '').lower() in {'автобус', 'bus', 'автобусы'}:
+            buses = search_buses(slots['from'], slots['to'], slots['date'])
+            if buses:
+                lines = []
+                for b in buses:
+                    depart = b.get('departure')
+                    arrive = b.get('arrival')
+                    price = b.get('price')
+                    line = f"{depart} → {arrive} — {price}"
+                    lines.append(line)
+                url = build_routes_url(slots['from'], slots['to'], slots['date'])
+                lines.append(url)
+                await query.message.answer("\n".join(lines))
+            else:
+                await query.message.answer('Рейсы не найдены.')
         await query.message.answer(
             f"\n```\n{json.dumps(slots, ensure_ascii=False, indent=2)}\n```"
         )
