@@ -12,7 +12,7 @@ API_URL = 'https://llm.api.cloud.yandex.net/foundationModels/v1/completion'
 MODEL_URI = f'gpt://{YANDEX_FOLDER_ID}/yandexgpt-lite'
 
 SYSTEM_PROMPT = (
-    'Ты извлекаешь параметры поездки пользователя. '
+    'Ты извлекаешь параметры поездки пользователя. Парси дату еще и из сообщений по типу завтра, на следующей неделе, возвращай ее в формате даты, отталкиваясь от сегодняшней даты'
     'Нужно вернуть JSON с полями from, to, date, transport. '
     'Если поле не указано, значение null. '
     'Формат даты YYYY-MM-DD.'
