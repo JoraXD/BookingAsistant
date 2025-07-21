@@ -22,6 +22,7 @@ def search_city_id(name: str) -> Optional[int]:
     return None
 
 
+
 def search_buses(origin: str, destination: str, date: str) -> List[Dict]:
     """Return list of bus routes from atlasbus.ru."""
     origin_id = search_city_id(origin)
@@ -33,6 +34,7 @@ def search_buses(origin: str, destination: str, date: str) -> List[Dict]:
     params = {
         "fromCity": origin_id,
         "toCity": destination_id,
+
         "date": date,
     }
     try:
@@ -48,3 +50,4 @@ def search_buses(origin: str, destination: str, date: str) -> List[Dict]:
 def build_routes_url(origin: str, destination: str, date: str) -> str:
     """Return URL to atlasbus with pre-filled route search."""
     return f"https://atlasbus.ru/Маршруты/{origin}/{destination}?date={date}"
+
