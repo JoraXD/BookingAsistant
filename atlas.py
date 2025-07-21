@@ -22,6 +22,7 @@ def search_city_id(name: str) -> Optional[int]:
     return None
 
 
+
 def search_buses(origin: str, destination: str, date: str) -> List[Dict]:
     """Return list of bus routes from atlasbus.ru."""
     origin_id = search_city_id(origin)
@@ -33,6 +34,7 @@ def search_buses(origin: str, destination: str, date: str) -> List[Dict]:
     params = {
         "fromCity": origin_id,
         "toCity": destination_id,
+
         "date": date,
     }
     try:
@@ -40,6 +42,7 @@ def search_buses(origin: str, destination: str, date: str) -> List[Dict]:
         resp.raise_for_status()
         data = resp.json()
         return data.get("routes") or data.get("items") or []
+
     except Exception as e:
         logging.exception("Failed to fetch buses: %s", e)
         return []
