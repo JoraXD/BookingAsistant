@@ -8,7 +8,7 @@ from aiogram.filters import Command
 from aiogram.types import Message
 
 from config import TELEGRAM_BOT_TOKEN
-from parser import parse_slots
+from parser import parse_slots, complete_slots
 from utils import normalize_date
 
 logging.basicConfig(level=logging.INFO)
@@ -50,11 +50,12 @@ async def handle_slots(message: Message):
     text = message.text
     uid = message.from_user.id
     slots = user_data.get(uid, {'from': None, 'to': None, 'date': None, 'transport': None})
+    question = user_data.get(uid, {}).pop('last_question', None)
 
     # сначала пытаемся вытащить дату напрямую из текста пользователя
     user_date = normalize_date(text)
 
-    parsed = parse_slots(text)
+    parsed = parse_slots(text, question)
 
     if user_date:
         parsed['date'] = user_date
@@ -68,6 +69,9 @@ async def handle_slots(message: Message):
         if value:
             slots[key] = value
 
+    # отправляем уже известные данные для дополнения
+    slots = complete_slots(slots)
+
     user_data[uid] = slots
     missing = get_missing_slots(slots)
 
@@ -79,6 +83,7 @@ async def handle_slots(message: Message):
             'transport': 'Какой транспорт предпочитаете: автобус, поезд или самолет?'
         }
         question_text = questions[missing[0]]
+        user_data[uid]['last_question'] = question_text
         await message.answer(question_text)
     else:
         summary = (
