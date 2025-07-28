@@ -14,6 +14,8 @@ Telegram-бот для интерактивного бронирования п�
 TELEGRAM_BOT_TOKEN=your_telegram_token
 YANDEX_IAM_TOKEN=your_yandex_iam_token
 YANDEX_FOLDER_ID=your_folder_id
+MANAGER_BOT_TOKEN=manager_bot_token
+MANAGER_CHAT_ID=manager_chat_id
 ```
 
 2. Установите зависимости:
@@ -22,10 +24,15 @@ YANDEX_FOLDER_ID=your_folder_id
 pip install -r requirements.txt
 ```
 
-3. Запустите бота:
+3. Запустите пользовательского бота:
 
 ```bash
 python main.py
+```
+
+4. Запустите бота менеджера (при необходимости):
+```bash
+python manager_bot.py
 ```
 
 ## Команды
@@ -37,3 +44,4 @@ python main.py
 ## Формат результата
 
 После подтверждения бот отправляет JSON с полями `from`, `to`, `date`, `transport`.
+Также эти данные вместе с `username` пользователя пересылаются в чат `MANAGER_CHAT_ID` через бота с токеном `MANAGER_BOT_TOKEN`.

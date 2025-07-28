@@ -7,7 +7,7 @@ from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup
 
-from config import TELEGRAM_BOT_TOKEN
+from config import TELEGRAM_BOT_TOKEN, MANAGER_BOT_TOKEN, MANAGER_CHAT_ID
 from parser import parse_slots, complete_slots
 from atlas import build_routes_url, link_has_routes
 
@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
 dp = Dispatcher()
+manager_bot = Bot(token=MANAGER_BOT_TOKEN) if MANAGER_BOT_TOKEN else None
 
 # Кнопки подтверждения/отмены
 confirm_keyboard = InlineKeyboardMarkup(
@@ -36,6 +37,21 @@ user_data: Dict[int, Dict[str, Optional[str]]] = {}
 
 def get_missing_slots(slots: Dict[str, Optional[str]]):
     return [key for key, value in slots.items() if not value]
+
+
+async def notify_manager(slots: Dict[str, Optional[str]], user: types.User):
+    """Send booking info to manager bot if configured."""
+    if not manager_bot or not MANAGER_CHAT_ID:
+        return
+    username = user.username or f"id{user.id}"
+    text = (
+        f"Новое бронирование от @{username}:\n"
+        f"```\n{json.dumps(slots, ensure_ascii=False, indent=2)}\n```"
+    )
+    try:
+        await manager_bot.send_message(int(MANAGER_CHAT_ID), text)
+    except Exception as e:
+        logger.exception("Failed to notify manager: %s", e)
 
 
 @dp.message(Command('start'))
@@ -117,12 +133,13 @@ async def handle_message(message: Message):
             if slots.get('transport', '').lower() in {'автобус', 'bus', 'автобусы'}:
                 url = build_routes_url(slots['from'], slots['to'], slots['date'])
                 if link_has_routes(slots['from'], slots['to'], slots['date']):
-
+                    await message.answer(url)
                 else:
                     await message.answer('Рейсы не найдены.')
             await message.answer(
                 f"\n```\n{json.dumps(slots, ensure_ascii=False, indent=2)}\n```"
             )
+            await notify_manager(slots, message.from_user)
         elif message.text.lower() in {'отмена', 'cancel'}:
             user_data.pop(uid, None)
             await message.answer('Бронирование отменено. Начните заново.')
@@ -150,6 +167,7 @@ async def cb_confirm(query: types.CallbackQuery):
         await query.message.answer(
             f"\n```\n{json.dumps(slots, ensure_ascii=False, indent=2)}\n```"
         )
+        await notify_manager(slots, query.from_user)
     await query.answer()
 
 
