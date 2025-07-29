@@ -33,7 +33,8 @@ def search_iata(city: str) -> Optional[str]:
     return None
 
 
-def search_flights(origin: str, destination: str, date: str) -> List[Dict]:
+def search_flights(origin: str, destination: str, date: Optional[str] = None) -> List[Dict]:
+
     """Return list of flights for given parameters."""
     if not AVIASALES_TOKEN:
         logger.error("AVIASALES_TOKEN is not set")
@@ -47,14 +48,16 @@ def search_flights(origin: str, destination: str, date: str) -> List[Dict]:
     params = {
         "origin": origin_code,
         "destination": destination_code,
-        "departure_at": date,
-        "return_at": date,
         "unique": False,
         "sorting": "price",
         "direct": False,
-        "limit": 5,
+        "limit": 30,
         "token": AVIASALES_TOKEN,
     }
+    if date:
+        params["departure_at"] = date
+        params["return_at"] = date
+
     try:
         resp = requests.get(FLIGHT_SEARCH_URL, params=params, timeout=30)
         resp.raise_for_status()
@@ -65,6 +68,16 @@ def search_flights(origin: str, destination: str, date: str) -> List[Dict]:
         return []
 
 
+def get_cheapest_flight(origin: str, destination: str, date: Optional[str] = None) -> Optional[Dict]:
+    """Return cheapest flight info as dict with date and price."""
+    flights = search_flights(origin, destination, date)
+    if not flights:
+        return None
+    cheapest = min(flights, key=lambda f: f.get("price", float("inf")))
+    return {
+        "date": cheapest.get("departure_at", "")[:10],
+        "price": cheapest.get("price"),
+    }
 def build_search_url(origin: str, destination: str, date: str) -> Optional[str]:
     """Return Aviasales search URL."""
     if not AVIASALES_TOKEN:
