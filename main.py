@@ -10,7 +10,6 @@ from aiogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup
 from config import TELEGRAM_BOT_TOKEN, MANAGER_BOT_TOKEN, MANAGER_CHAT_ID
 from parser import parse_slots, complete_slots
 from atlas import build_routes_url, link_has_routes
-from aviasales import build_search_url, search_flights, get_cheapest_flight
 
 from utils import normalize_date
 
@@ -116,29 +115,12 @@ async def handle_slots(message: Message):
         user_data[uid]['last_question'] = question_text
         await message.answer(question_text)
     else:
-        transport = slots['transport'].lower()
-        if transport in {'самолет', 'самолёт', 'plane', 'самолеты', 'самолёты'}:
-            info = get_cheapest_flight(slots['from'], slots['to'], slots.get('date'))
-            if info:
-                # если дата не была указана, используем найденную
-                slots['date'] = slots['date'] or info['date']
-                summary = (
-                    f"Минимальная цена: {slots['from']} - {slots['to']} - "
-                    f"{info['date']} - {info['price']} ₽\n"
-                    "Забронировать?"
-                )
-                await message.answer(summary, reply_markup=confirm_keyboard)
-                user_data[uid] = slots
-                user_data[uid]['confirm'] = True
-            else:
-                await message.answer('Билеты не найдены.')
-        else:
-            summary = (
-                f"Подтвердите поездку из {slots['from']} в {slots['to']} "
-                f"{slots['date']} на {slots['transport']}"
-            )
-            await message.answer(summary, reply_markup=confirm_keyboard)
-            user_data[uid]['confirm'] = True
+        summary = (
+            f"Подтвердите поездку из {slots['from']} в {slots['to']} "
+            f"{slots['date']} на {slots['transport']}"
+        )
+        await message.answer(summary, reply_markup=confirm_keyboard)
+        user_data[uid]['confirm'] = True
 
 
 @dp.message()
@@ -148,23 +130,18 @@ async def handle_message(message: Message):
         if message.text.lower() in {'да', 'yes', 'confirm', 'подтвердить'}:
             slots = user_data.pop(uid)
             slots.pop('confirm', None)
-            transport = slots.get('transport', '').lower()
-            if transport in {'автобус', 'bus', 'автобусы'}:
+            if slots.get('transport', '').lower() in {'автобус', 'bus', 'автобусы'}:
                 url = build_routes_url(slots['from'], slots['to'], slots['date'])
                 if link_has_routes(slots['from'], slots['to'], slots['date']):
                     await message.answer(url)
                 else:
                     await message.answer('Рейсы не найдены.')
-            elif transport in {'самолет', 'самолёт', 'plane', 'самолеты', 'самолёты'}:
-                url = build_search_url(slots['from'], slots['to'], slots['date'])
-                if url and search_flights(slots['from'], slots['to'], slots['date']):
-                    await message.answer(url)
-                else:
-                    await message.answer('Билеты не найдены.')
             await notify_manager(slots, message.from_user)
-            
+            response = {
+                "message": "Отправили заявку менеджеру, скоро с вами свяжутся!"
+            }
             await message.answer(
-                "Отправили заявку менеджеру, скоро с вами свяжутся!"
+                f"\n```\n{json.dumps(response, ensure_ascii=False, indent=2)}\n```"
             )
         elif message.text.lower() in {'отмена', 'cancel'}:
             user_data.pop(uid, None)
@@ -183,23 +160,19 @@ async def cb_confirm(query: types.CallbackQuery):
     await query.message.edit_reply_markup()
     if slots:
         slots.pop('confirm', None)
-        transport = slots.get('transport', '').lower()
-        if transport in {'автобус', 'bus', 'автобусы'}:
+        if slots.get('transport', '').lower() in {'автобус', 'bus', 'автобусы'}:
             url = build_routes_url(slots['from'], slots['to'], slots['date'])
             if link_has_routes(slots['from'], slots['to'], slots['date']):
                 await query.message.answer(url)
 
             else:
                 await query.message.answer('Рейсы не найдены.')
-        elif transport in {'самолет', 'самолёт', 'plane', 'самолеты', 'самолёты'}:
-            url = build_search_url(slots['from'], slots['to'], slots['date'])
-            if url and search_flights(slots['from'], slots['to'], slots['date']):
-                await query.message.answer(url)
-            else:
-                await query.message.answer('Билеты не найдены.')
         await notify_manager(slots, query.from_user)
+        response = {
+            "message": "Отправили заявку менеджеру, скоро с вами свяжутся!"
+        }
         await query.message.answer(
-            "Отправили заявку менеджеру, скоро с вами свяжутся!"
+            f"\n```\n{json.dumps(response, ensure_ascii=False, indent=2)}\n```"
         )
     await query.answer()
 
