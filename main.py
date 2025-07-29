@@ -162,11 +162,9 @@ async def handle_message(message: Message):
                 else:
                     await message.answer('Билеты не найдены.')
             await notify_manager(slots, message.from_user)
-            response = {
-                "message": "Отправили заявку менеджеру, скоро с вами свяжутся!"
-            }
+            
             await message.answer(
-                f"\n```\n{json.dumps(response, ensure_ascii=False, indent=2)}\n```"
+                "Отправили заявку менеджеру, скоро с вами свяжутся!"
             )
         elif message.text.lower() in {'отмена', 'cancel'}:
             user_data.pop(uid, None)
@@ -200,11 +198,8 @@ async def cb_confirm(query: types.CallbackQuery):
             else:
                 await query.message.answer('Билеты не найдены.')
         await notify_manager(slots, query.from_user)
-        response = {
-            "message": "Отправили заявку менеджеру, скоро с вами свяжутся!"
-        }
         await query.message.answer(
-            f"\n```\n{json.dumps(response, ensure_ascii=False, indent=2)}\n```"
+            "Отправили заявку менеджеру, скоро с вами свяжутся!"
         )
     await query.answer()
 
