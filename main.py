@@ -12,6 +12,7 @@ from parser import parse_slots, complete_slots
 from atlas import build_routes_url, link_has_routes
 
 from utils import normalize_date
+from slot_editor import update_slots
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -33,6 +34,14 @@ confirm_keyboard = InlineKeyboardMarkup(
 
 # Сохранение слотов по user_id
 user_data: Dict[int, Dict[str, Optional[str]]] = {}
+
+# Вопросы для уточнения недостающих слотов
+QUESTIONS = {
+    'from': 'Из какого города вы отправляетесь?',
+    'to': 'В какой город хотите отправиться?',
+    'date': 'На какую дату планируете поездку?',
+    'transport': 'Какой транспорт предпочитаете: автобус, поезд или самолет?'
+}
 
 
 def get_missing_slots(slots: Dict[str, Optional[str]]):
@@ -105,13 +114,7 @@ async def handle_slots(message: Message):
     missing = get_missing_slots(slots)
 
     if missing:
-        questions = {
-            'from': 'Из какого города вы отправляетесь?',
-            'to': 'В какой город хотите отправиться?',
-            'date': 'На какую дату планируете поездку?',
-            'transport': 'Какой транспорт предпочитаете: автобус, поезд или самолет?'
-        }
-        question_text = questions[missing[0]]
+        question_text = QUESTIONS[missing[0]]
         user_data[uid]['last_question'] = question_text
         await message.answer(question_text)
     else:
@@ -147,8 +150,22 @@ async def handle_message(message: Message):
             user_data.pop(uid, None)
             await message.answer('Бронирование отменено. Начните заново.')
         else:
-            user_data.pop(uid, None)
-            await message.answer('Бронирование отклонено. Начните заново.')
+            # Пользователь хочет изменить слоты
+            user_data[uid].pop('confirm', None)
+            slots = update_slots(uid, message.text, user_data)
+            slots = complete_slots(slots)
+            missing = get_missing_slots(slots)
+            if missing:
+                question_text = QUESTIONS[missing[0]]
+                user_data[uid]['last_question'] = question_text
+                await message.answer(question_text)
+            else:
+                summary = (
+                    f"Подтвердите поездку из {slots['from']} в {slots['to']} "
+                    f"{slots['date']} на {slots['transport']}"
+                )
+                await message.answer(summary, reply_markup=confirm_keyboard)
+                user_data[uid]['confirm'] = True
     else:
         await handle_slots(message)
 
