@@ -7,7 +7,12 @@ from utils import normalize_date
 logger = logging.getLogger(__name__)
 
 
-def update_slots(user_id: int, message: str, session_data: Dict[int, Dict[str, Optional[str]]]) -> Dict[str, Optional[str]]:
+def update_slots(
+    user_id: int,
+    message: str,
+    session_data: Dict[int, Dict[str, Optional[str]]],
+    question: Optional[str] = None,
+) -> tuple[Dict[str, Optional[str]], Dict[str, str]]:
     """Update saved slots for a user based on correction message.
 
     The function re-parses the incoming ``message`` to detect which booking
@@ -26,20 +31,24 @@ def update_slots(user_id: int, message: str, session_data: Dict[int, Dict[str, O
 
     Returns
     -------
-    dict
-        Updated slot dictionary for ``user_id``.
+    tuple
+        ``(slots, changed)`` where ``slots`` is the updated slot dictionary and
+        ``changed`` contains only the fields that were modified.
     """
     # Current user slots or empty defaults
-    slots = session_data.get(user_id, {
-        'from': None,
-        'to': None,
-        'date': None,
-        'transport': None,
-    })
+    slots = session_data.get(
+        user_id,
+        {
+            'from': None,
+            'to': None,
+            'date': None,
+            'transport': None,
+        },
+    )
 
     logger.info("Editing slots for %s: %s", user_id, message)
 
-    parsed = parse_slots(message)
+    parsed = parse_slots(message, question)
     user_date = normalize_date(message)
     if user_date:
         parsed['date'] = user_date
@@ -61,4 +70,4 @@ def update_slots(user_id: int, message: str, session_data: Dict[int, Dict[str, O
     else:
         logger.info("No slot updates for %s", user_id)
 
-    return slots
+    return slots, changed
