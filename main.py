@@ -8,10 +8,10 @@ from aiogram.filters import Command
 from aiogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup
 
 from config import TELEGRAM_BOT_TOKEN, MANAGER_BOT_TOKEN, MANAGER_CHAT_ID
-from parser import parse_slots, complete_slots
+from parser import complete_slots
 from atlas import build_routes_url, link_has_routes
 
-from utils import normalize_date
+from slot_editor import update_slots
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -33,6 +33,22 @@ confirm_keyboard = InlineKeyboardMarkup(
 
 # Сохранение слотов по user_id
 user_data: Dict[int, Dict[str, Optional[str]]] = {}
+
+# Вопросы для уточнения недостающих слотов
+QUESTIONS = {
+    'from': 'Из какого города вы отправляетесь?',
+    'to': 'В какой город хотите отправиться?',
+    'date': 'На какую дату планируете поездку?',
+    'transport': 'Какой транспорт предпочитаете: автобус, поезд или самолет?'
+}
+
+# Названия слотов для сообщений об изменениях
+FIELD_NAMES = {
+    'from': 'город отправления',
+    'to': 'город назначения',
+    'date': 'дату',
+    'transport': 'транспорт',
+}
 
 
 def get_missing_slots(slots: Dict[str, Optional[str]]):
@@ -78,48 +94,30 @@ async def cmd_cancel(message: Message):
 async def handle_slots(message: Message):
     text = message.text
     uid = message.from_user.id
-    slots = user_data.get(uid, {'from': None, 'to': None, 'date': None, 'transport': None})
     question = user_data.get(uid, {}).pop('last_question', None)
 
-    # сначала пытаемся вытащить дату напрямую из текста пользователя
-    user_date = normalize_date(text)
+    slots, changed = update_slots(uid, text, user_data, question)
 
-    parsed = parse_slots(text, question)
-
-    if user_date:
-        parsed['date'] = user_date
-    elif parsed.get('date'):
-        # нормализуем дату, возвращённую YandexGPT
-        parsed['date'] = normalize_date(parsed['date']) or parsed['date']
-
-    # обновляем слоты
-    for key in ['from', 'to', 'date', 'transport']:
-        value = parsed.get(key)
-        if value:
-            slots[key] = value
-
-    # отправляем уже известные данные для дополнения
     slots = complete_slots(slots)
 
     user_data[uid] = slots
     missing = get_missing_slots(slots)
 
+    changed_msg = ''
+    if changed:
+        parts = [f"{FIELD_NAMES[k]} на {v}" for k, v in changed.items()]
+        changed_msg = 'Изменил ' + ', '.join(parts) + '.\n'
+
     if missing:
-        questions = {
-            'from': 'Из какого города вы отправляетесь?',
-            'to': 'В какой город хотите отправиться?',
-            'date': 'На какую дату планируете поездку?',
-            'transport': 'Какой транспорт предпочитаете: автобус, поезд или самолет?'
-        }
-        question_text = questions[missing[0]]
+        question_text = QUESTIONS[missing[0]]
         user_data[uid]['last_question'] = question_text
-        await message.answer(question_text)
+        await message.answer(changed_msg + question_text)
     else:
         summary = (
             f"Подтвердите поездку из {slots['from']} в {slots['to']} "
             f"{slots['date']} на {slots['transport']}"
         )
-        await message.answer(summary, reply_markup=confirm_keyboard)
+        await message.answer(changed_msg + summary, reply_markup=confirm_keyboard)
         user_data[uid]['confirm'] = True
 
 
@@ -147,8 +145,30 @@ async def handle_message(message: Message):
             user_data.pop(uid, None)
             await message.answer('Бронирование отменено. Начните заново.')
         else:
-            user_data.pop(uid, None)
-            await message.answer('Бронирование отклонено. Начните заново.')
+            # Пользователь хочет изменить слоты во время подтверждения
+            user_data[uid].pop('confirm', None)
+            slots, changed = update_slots(uid, message.text, user_data)
+            slots = complete_slots(slots)
+            changed_msg = ''
+            if changed:
+                parts = [f"{FIELD_NAMES[k]} на {v}" for k, v in changed.items()]
+                changed_msg = 'Изменил ' + ', '.join(parts) + '.\n'
+
+            missing = get_missing_slots(slots)
+            if missing:
+                question_text = QUESTIONS[missing[0]]
+                user_data[uid]['last_question'] = question_text
+                await message.answer(changed_msg + question_text)
+            else:
+                summary = (
+                    f"Подтвердите поездку из {slots['from']} в {slots['to']} "
+                    f"{slots['date']} на {slots['transport']}"
+                )
+                await message.answer(
+                    changed_msg + summary,
+                    reply_markup=confirm_keyboard,
+                )
+                user_data[uid]['confirm'] = True
     else:
         await handle_slots(message)
 
