@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import re
 from typing import Dict, Optional
 
 from aiogram import Bot, Dispatcher, types, F
@@ -13,6 +14,7 @@ from atlas import build_routes_url, link_has_routes
 
 from slot_editor import update_slots
 from utils import display_transport
+from storage import save_trip, get_last_trips, cancel_trip
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -128,6 +130,33 @@ async def handle_slots(message: Message):
 @dp.message()
 async def handle_message(message: Message):
     uid = message.from_user.id
+    text_lower = message.text.lower()
+
+    if text_lower.startswith('покажи последние поездки'):
+        trips = get_last_trips(uid)
+        if not trips:
+            await message.answer('У вас нет поездок.')
+        else:
+            lines = []
+            for t in trips:
+                lines.append(
+                    f"{t['id']}: {t['origin']} → {t['destination']} {t['date']} "
+                    f"{display_transport(t['transport'])} [{t['status']}]"
+                )
+            await message.answer('\n'.join(lines))
+        return
+
+    cancel_match = re.search(r'отмени поездку в\s+(.+)', text_lower)
+    if cancel_match:
+        dest = cancel_match.group(1).strip()
+        trips = get_last_trips(uid, limit=20)
+        for t in trips:
+            if t['destination'].lower() == dest and t['status'] == 'active':
+                cancel_trip(t['id'])
+                await message.answer(f"Поездка в {t['destination']} отменена.")
+                return
+        await message.answer('Поездка не найдена.')
+        return
     if user_data.get(uid, {}).get('confirm'):
         if message.text.lower() in {'да', 'yes', 'confirm', 'подтвердить'}:
             slots = user_data.pop(uid)
@@ -139,6 +168,14 @@ async def handle_message(message: Message):
                 else:
                     await message.answer('Рейсы не найдены.')
             await notify_manager(slots, message.from_user)
+            save_trip({
+                'user_id': uid,
+                'origin': slots['from'],
+                'destination': slots['to'],
+                'date': slots['date'],
+                'transport': slots['transport'],
+                'status': 'active',
+            })
             response = {
                 "message": "Отправили заявку менеджеру, скоро с вами свяжутся!"
             }
@@ -195,6 +232,14 @@ async def cb_confirm(query: types.CallbackQuery):
             else:
                 await query.message.answer('Рейсы не найдены.')
         await notify_manager(slots, query.from_user)
+        save_trip({
+            'user_id': uid,
+            'origin': slots['from'],
+            'destination': slots['to'],
+            'date': slots['date'],
+            'transport': slots['transport'],
+            'status': 'active',
+        })
         response = {
             "message": "Отправили заявку менеджеру, скоро с вами свяжутся!"
         }
