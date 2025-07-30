@@ -33,7 +33,8 @@ def update_slots(
     -------
     tuple
         ``(slots, changed)`` where ``slots`` is the updated slot dictionary and
-        ``changed`` contains only the fields that were modified.
+        ``changed`` contains only the fields that were modified. Filling
+        previously empty slots is not considered a modification.
     """
     # Current user slots or empty defaults
     slots = session_data.get(
@@ -59,7 +60,10 @@ def update_slots(
     for key in ['from', 'to', 'date', 'transport']:
         value = parsed.get(key)
         if value:
-            if slots.get(key) != value:
+            # If slot already had some value and user provided a new one,
+            # consider this an edit and record it. Filling previously empty
+            # fields is not treated as a change for notification purposes.
+            if slots.get(key) is not None and slots.get(key) != value:
                 changed[key] = value
             slots[key] = value
 
