@@ -12,6 +12,7 @@ from parser import complete_slots
 from atlas import build_routes_url, link_has_routes
 
 from slot_editor import update_slots
+from utils import display_transport
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -105,7 +106,10 @@ async def handle_slots(message: Message):
 
     changed_msg = ''
     if changed:
-        parts = [f"{FIELD_NAMES[k]} на {v}" for k, v in changed.items()]
+        parts = [
+            f"{FIELD_NAMES[k]} на {display_transport(v) if k == 'transport' else v}"
+            for k, v in changed.items()
+        ]
         changed_msg = 'Изменил ' + ', '.join(parts) + '.\n'
 
     if missing:
@@ -115,7 +119,7 @@ async def handle_slots(message: Message):
     else:
         summary = (
             f"Подтвердите поездку из {slots['from']} в {slots['to']} "
-            f"{slots['date']} на {slots['transport']}"
+            f"{slots['date']} на {display_transport(slots['transport'])}"
         )
         await message.answer(changed_msg + summary, reply_markup=confirm_keyboard)
         user_data[uid]['confirm'] = True
@@ -151,7 +155,10 @@ async def handle_message(message: Message):
             slots = complete_slots(slots)
             changed_msg = ''
             if changed:
-                parts = [f"{FIELD_NAMES[k]} на {v}" for k, v in changed.items()]
+                parts = [
+                    f"{FIELD_NAMES[k]} на {display_transport(v) if k == 'transport' else v}"
+                    for k, v in changed.items()
+                ]
                 changed_msg = 'Изменил ' + ', '.join(parts) + '.\n'
 
             missing = get_missing_slots(slots)
@@ -162,7 +169,7 @@ async def handle_message(message: Message):
             else:
                 summary = (
                     f"Подтвердите поездку из {slots['from']} в {slots['to']} "
-                    f"{slots['date']} на {slots['transport']}"
+                    f"{slots['date']} на {display_transport(slots['transport'])}"
                 )
                 await message.answer(
                     changed_msg + summary,

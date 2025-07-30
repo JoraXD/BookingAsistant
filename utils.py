@@ -48,3 +48,18 @@ def normalize_date(text: str) -> Optional[str]:
         return None
     return dt.strftime('%Y-%m-%d')
 
+
+# Mapping of internal transport codes to Russian labels
+TRANSPORT_RU = {
+    'bus': 'автобус',
+    'train': 'поезд',
+    'plane': 'самолет',
+}
+
+
+def display_transport(value: Optional[str]) -> str:
+    """Return Russian name for a transport code."""
+    if not value:
+        return ''
+    return TRANSPORT_RU.get(value.lower(), value)
+
