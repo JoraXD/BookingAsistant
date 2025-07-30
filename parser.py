@@ -164,3 +164,72 @@ def complete_slots(slots: Dict[str, Optional[str]]) -> Dict[str, Optional[str]]:
         logger.exception('Failed to complete slots: %s', e)
         return slots
 
+
+# --- History requests ------------------------------------------------------
+
+HISTORY_PROMPT = (
+    'Определи, хочет ли пользователь показать историю поездок или отменить ' \
+    'конкретную поездку. Возвращай JSON:\n'
+    '{"action": "show"|"cancel"|"", "destination": "", "limit": <int>}\n'
+    'destination указывается только для отмены, limit по умолчанию 5.'
+)
+
+
+def _heuristic_history(text: str) -> Dict[str, Optional[str]]:
+    """Быстрый разбор запроса без GPT для тестов и резервного канала."""
+    low = text.lower()
+    match = re.search(r'покажи.*?(\d+)', low)
+    if 'покаж' in low and 'поездк' in low:
+        limit = int(match.group(1)) if match else 5
+        return {'action': 'show', 'limit': limit, 'destination': ''}
+    cancel = re.search(r'отмени .*?поездк.*?в\s+([\w\s-]+)', low)
+    if cancel:
+        return {
+            'action': 'cancel',
+            'destination': cancel.group(1).strip(),
+            'limit': 5,
+        }
+    return {'action': ''}
+
+
+def parse_history_request(text: str) -> Dict[str, Optional[str]]:
+    """Return structured history command using YandexGPT if available."""
+    result = _heuristic_history(text)
+    if result.get('action'):
+        return result
+
+    headers = {
+        'Authorization': f'Bearer {YANDEX_IAM_TOKEN}',
+        'Content-Type': 'application/json',
+    }
+    payload = {
+        'modelUri': MODEL_URI,
+        'completionOptions': {
+            'stream': False,
+            'temperature': 0.2,
+            'maxTokens': 100,
+        },
+        'messages': [
+            {'role': 'system', 'text': HISTORY_PROMPT},
+            {'role': 'user', 'text': text},
+        ],
+    }
+    try:
+        response = requests.post(API_URL, headers=headers, json=payload, timeout=15)
+        response.raise_for_status()
+        data = response.json()
+        answer = data.get('result', {}).get('alternatives', [{}])[0].get('message', {}).get('text', '')
+        logger.info('History request result: %s', answer)
+        parsed = json.loads(_extract_json(answer))
+        action = parsed.get('action', '').strip()
+        if not action:
+            return {'action': ''}
+        return {
+            'action': action,
+            'destination': parsed.get('destination', '').strip(),
+            'limit': int(parsed.get('limit', 5) or 5),
+        }
+    except Exception as e:
+        logger.exception('Failed to parse history request: %s', e)
+        return {'action': ''}
+
