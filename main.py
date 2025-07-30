@@ -1,7 +1,6 @@
 import asyncio
 import json
 import logging
-import re
 from typing import Dict, Optional
 
 from aiogram import Bot, Dispatcher, types, F
@@ -9,7 +8,7 @@ from aiogram.filters import Command
 from aiogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup
 
 from config import TELEGRAM_BOT_TOKEN, MANAGER_BOT_TOKEN, MANAGER_CHAT_ID
-from parser import complete_slots
+from parser import complete_slots, parse_history_request
 from atlas import build_routes_url, link_has_routes
 
 from slot_editor import update_slots
@@ -130,31 +129,33 @@ async def handle_slots(message: Message):
 @dp.message()
 async def handle_message(message: Message):
     uid = message.from_user.id
-    text_lower = message.text.lower()
+    action = parse_history_request(message.text)
 
-    if text_lower.startswith('покажи последние поездки'):
-        trips = get_last_trips(uid)
+    if action.get('action') == 'show':
+        limit = int(action.get('limit', 5))
+        trips = get_last_trips(uid, limit=limit)
         if not trips:
             await message.answer('У вас нет поездок.')
         else:
-            lines = []
-            for t in trips:
-                lines.append(
-                    f"{t['id']}: {t['origin']} → {t['destination']} {t['date']} "
-                    f"{display_transport(t['transport'])} [{t['status']}]"
-                )
+            lines = [
+                f"{t['id']}: {t['origin']} → {t['destination']} {t['date']} "
+                f"{display_transport(t['transport'])} [{t['status']}]"
+                for t in trips
+            ]
             await message.answer('\n'.join(lines))
         return
 
-    cancel_match = re.search(r'отмени поездку в\s+(.+)', text_lower)
-    if cancel_match:
-        dest = cancel_match.group(1).strip()
-        trips = get_last_trips(uid, limit=20)
-        for t in trips:
-            if t['destination'].lower() == dest and t['status'] == 'active':
-                cancel_trip(t['id'])
-                await message.answer(f"Поездка в {t['destination']} отменена.")
-                return
+    if action.get('action') == 'cancel':
+        dest = action.get('destination', '').lower()
+        if dest:
+            trips = get_last_trips(uid, limit=20)
+            for t in trips:
+                if t['destination'].lower() == dest and t['status'] == 'active':
+                    cancel_trip(t['id'])
+                    await message.answer(
+                        f"Поездка в {t['destination']} отменена."
+                    )
+                    return
         await message.answer('Поездка не найдена.')
         return
     if user_data.get(uid, {}).get('confirm'):
