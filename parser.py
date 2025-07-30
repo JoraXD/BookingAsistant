@@ -1,6 +1,7 @@
 import json
 import logging
 import re
+from datetime import datetime
 from typing import Dict, Optional
 
 import requests
@@ -12,46 +13,75 @@ logger = logging.getLogger(__name__)
 API_URL = 'https://llm.api.cloud.yandex.net/foundationModels/v1/completion'
 MODEL_URI = f'gpt://{YANDEX_FOLDER_ID}/yandexgpt-lite'
 
+TODAY_DATE = datetime.now().strftime('%Y-%m-%d')
+WEEKDAYS_RU = [
+    'понедельник', 'вторник', 'среда',
+    'четверг', 'пятница', 'суббота', 'воскресенье'
+]
+TODAY_WEEKDAY = WEEKDAYS_RU[datetime.now().weekday()]
+
 SYSTEM_PROMPT = (
-    'Ты извлекаешь параметры поездки пользователя. '
-    'Нужно вернуть JSON с полями from, to, date, transport. '
-    'Если поле не указано, значение null. '
-    'Формат даты YYYY-MM-DD.'
+    'Ты — умный ассистент по бронированию поездок. '
+    'Твоя цель — из любого пользовательского текста извлечь 4 параметра:\n'
+    '- origin — город отправления\n'
+    '- destination — город назначения\n'
+    '- date — дата поездки (формат YYYY-MM-DD)\n'
+    '- transport — вид транспорта (bus, train, plane), если не указан — оставь пусто\n'
+    '\n‼ ВАЖНЫЕ ПРАВИЛА:\n'
+    '1. Понимай и исправляй искаженные слова, сокращения, сленговые названия:\n'
+    '   - Город: "питер", "мск", "москоу", "екб", "новосиб", "спб" → нормализуй до официального полного названия ("Санкт-Петербург", "Москва" и т.д.)\n'
+    '   - Транспорт: "самолёт", "самолетик", "птичка", "авиабилеты" → plane\n'
+    '     "поезд", "электричка", "ржд", "сапсан" → train\n'
+    '     "автобус", "маршрутка", "atlas", "шкипер" → bus\n'
+    '2. Исправляй опечатки, недостающие буквы, латиницу вместо кириллицы ("Moskva" → "Москва").\n'
+    '3. Даты распознавай в любом формате:\n'
+    '   - "завтра", "послезавтра", "через неделю", "пятница", "5 авг", "05/08", "2025-08-05"\n'
+    '   - Если день/месяц не указан — угадай ближайшую дату.\n'
+    '   - Всегда возвращай ISO-формат (YYYY-MM-DD).\n'
+    f'   - Если дата указана как день недели (пн, понедельник, в сб, в воскресенье), '
+    f'преобразуй её в ближайшую будущую дату в формате YYYY-MM-DD, считая, что сегодня {TODAY_DATE} {TODAY_WEEKDAY}. '
+    'Если дата уже прошла на этой неделе, выбери следующую неделю.\n'
+    '4. Если есть двусмысленность, выбирай наиболее популярный вариант (например, "Питер" → "Санкт-Петербург").\n'
+    '5. Если какой-то параметр отсутствует — оставь пустую строку, но не выдумывай данные.\n'
+    '\nВыходной формат строго JSON:\n'
+    '{\n'
+    '  "origin": "<полное название города или пусто>",\n'
+    '  "destination": "<полное название города или пусто>",\n'
+    '  "date": "YYYY-MM-DD или пусто",\n'
+    '  "transport": "bus/train/plane или пусто"\n'
+    '}'
 )
 
 # Используется при дополнении уже известных слотов
 COMPLETE_PROMPT = (
     'Ты дополняешь или исправляешь JSON с параметрами поездки. '
-    'Нужно вернуть JSON с полями from, to, date, transport. '
-    'Если поле не указано, значение null. '
-    'Формат даты YYYY-MM-DD.'
+    'Если каких-то значений нет, попробуй определить их из текста пользователя. '
+    'Требуется вернуть JSON с полями origin, destination, date, transport. '
+    'Правила и формат такие же, как и в предыдущей инструкции про извлечение параметров. '
+    f'Если дата указана как день недели (пн, понедельник, в сб, в воскресенье), '
+    f'преобразуй её в ближайшую будущую дату в формате YYYY-MM-DD, считая, что сегодня {TODAY_DATE} {TODAY_WEEKDAY}. '
+    'Если дата уже прошла на этой неделе, выбери следующую неделю.'
 )
 
 
-def _extract_json(text: str) -> str:
-    """Return JSON string from YandexGPT answer."""
-    # remove code fences like ```json ... ```
-    text = text.strip()
-    if text.startswith('```'):
-        # strip the opening and closing fences
-        text = text.strip('`')
-        text = text.lstrip('json').strip()
-    # find first JSON object
-    match = re.search(r'\{.*\}', text, re.DOTALL)
-    if match:
-        return match.group(0)
-    return text
+def parse_transport(text: str) -> str:
+    """Return normalized transport type from free-form text."""
+    text = text.lower()
+    if re.search(r"\b(автобус|маршрутк|atlas|шкипер|bus|бус|бас)\w*", text):
+        return "bus"
+    if re.search(r"\b(самол[eё]т|самолетик|птичк|авиабилет|plane|полететь|лететь)\w*", text):
+        return "plane"
+    if re.search(r"\b(поезд|электричк|ржд|сапсан|train|ж.?д)\w*", text):
+        return "train"
+    return "train"
 
 
 def _extract_json(text: str) -> str:
     """Return JSON string from YandexGPT answer."""
-    # remove code fences like ```json ... ```
     text = text.strip()
     if text.startswith('```'):
-        # strip the opening and closing fences
         text = text.strip('`')
         text = text.lstrip('json').strip()
-    # find first JSON object
     match = re.search(r'\{.*\}', text, re.DOTALL)
     if match:
         return match.group(0)
@@ -87,8 +117,8 @@ def parse_slots(text: str, question: Optional[str] = None) -> Dict[str, Optional
         logger.info("Yandex response: %s", answer)
         slots = json.loads(_extract_json(answer))
         return {
-            'from': slots.get('from'),
-            'to': slots.get('to'),
+            'from': slots.get('origin') or slots.get('from'),
+            'to': slots.get('destination') or slots.get('to'),
             'date': slots.get('date'),
             'transport': slots.get('transport'),
         }
@@ -125,11 +155,12 @@ def complete_slots(slots: Dict[str, Optional[str]]) -> Dict[str, Optional[str]]:
         updated = json.loads(_extract_json(answer))
 
         return {
-            'from': updated.get('from'),
-            'to': updated.get('to'),
+            'from': updated.get('origin') or updated.get('from'),
+            'to': updated.get('destination') or updated.get('to'),
             'date': updated.get('date'),
             'transport': updated.get('transport'),
         }
     except Exception as e:
         logger.exception('Failed to complete slots: %s', e)
         return slots
+
