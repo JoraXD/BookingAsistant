@@ -3,9 +3,9 @@ import json
 import logging
 from typing import Dict, Optional
 
-from aiogram import Bot, Dispatcher, types, F
+from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
-from aiogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import Message
 
 from config import TELEGRAM_BOT_TOKEN, MANAGER_BOT_TOKEN, MANAGER_CHAT_ID
 from parser import (
@@ -14,6 +14,7 @@ from parser import (
     generate_question,
     generate_confirmation,
     generate_fallback,
+    parse_yes_no,
 )
 from atlas import build_routes_url, link_has_routes
 
@@ -27,17 +28,6 @@ logger = logging.getLogger(__name__)
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
 dp = Dispatcher()
 manager_bot = Bot(token=MANAGER_BOT_TOKEN) if MANAGER_BOT_TOKEN else None
-
-# Кнопки подтверждения/отмены
-confirm_keyboard = InlineKeyboardMarkup(
-    inline_keyboard=[
-        [
-            InlineKeyboardButton(text='Подтвердить', callback_data='confirm'),
-            InlineKeyboardButton(text='Отклонить', callback_data='reject'),
-        ],
-        [InlineKeyboardButton(text='Отмена', callback_data='cancel')],
-    ]
-)
 
 # Сохранение слотов по user_id
 user_data: Dict[int, Dict[str, Optional[str]]] = {}
@@ -138,7 +128,7 @@ async def handle_slots(message: Message):
             slots,
             f"Отлично, вот что получилось: {display_transport(slots['transport'])} {slots['from']} → {slots['to']} {slots['date']}. Всё верно?",
         )
-        await message.answer(changed_msg + summary, reply_markup=confirm_keyboard)
+        await message.answer(changed_msg + summary)
         user_data[uid]['confirm'] = True
 
 
@@ -174,10 +164,11 @@ async def handle_message(message: Message):
                     return
         await message.answer('Поездка не найдена.')
         return
-    if user_data.get(uid, {}).get('confirm'):
-        if message.text.lower() in {'да', 'yes', 'confirm', 'подтвердить'}:
+    if user_data.get(uid, {}).get('await_search'):
+        choice = parse_yes_no(message.text)
+        if choice == 'yes':
             slots = user_data.pop(uid)
-            slots.pop('confirm', None)
+            slots.pop('await_search', None)
             if slots.get('transport', '').lower() in {'автобус', 'bus', 'автобусы'}:
                 url = build_routes_url(slots['from'], slots['to'], slots['date'])
                 if link_has_routes(slots['from'], slots['to'], slots['date']):
@@ -194,16 +185,47 @@ async def handle_message(message: Message):
                 'status': 'active',
             })
             response = {
-                "message": "Отправили заявку менеджеру, скоро с вами свяжутся!"
+                "message": "Отправили заявку менеджеру, скоро с вами свяжутся!",
             }
             await message.answer(
                 f"\n```\n{json.dumps(response, ensure_ascii=False, indent=2)}\n```"
             )
-        elif message.text.lower() in {'отмена', 'cancel'}:
+        elif choice == 'no':
+            slots = user_data.pop(uid)
+            slots.pop('await_search', None)
+            await notify_manager(slots, message.from_user)
+            save_trip({
+                'user_id': uid,
+                'origin': slots['from'],
+                'destination': slots['to'],
+                'date': slots['date'],
+                'transport': slots['transport'],
+                'status': 'active',
+            })
+            response = {
+                "message": "Отправили заявку менеджеру, скоро с вами свяжутся!",
+            }
+            await message.answer(
+                f"\n```\n{json.dumps(response, ensure_ascii=False, indent=2)}\n```"
+            )
+        else:
+            await message.answer("Напишите, пожалуйста, да или нет.")
+        return
+
+    if user_data.get(uid, {}).get('confirm'):
+        if 'отмен' in message.text.lower():
             user_data.pop(uid, None)
             await message.answer('Бронирование отменено. Если захотите, можем попробовать ещё раз!')
+            return
+
+        choice = parse_yes_no(message.text)
+        if choice == 'yes':
+            slots = user_data[uid]
+            slots.pop('confirm', None)
+            slots['await_search'] = True
+            await message.answer('Хотите, я поищу билеты?')
         else:
-            # Пользователь хочет изменить слоты во время подтверждения
+            # Пользователь хочет изменить слоты или отказался
             user_data[uid].pop('confirm', None)
             slots, changed = update_slots(uid, message.text, user_data)
             slots = complete_slots(slots)
@@ -225,61 +247,12 @@ async def handle_message(message: Message):
                     slots,
                     f"Отлично, вот что получилось: {display_transport(slots['transport'])} {slots['from']} → {slots['to']} {slots['date']}. Всё верно?",
                 )
-                await message.answer(
-                    changed_msg + summary,
-                    reply_markup=confirm_keyboard,
-                )
+                await message.answer(changed_msg + summary)
                 user_data[uid]['confirm'] = True
-    else:
-        await handle_slots(message)
+        return
 
+    await handle_slots(message)
 
-@dp.callback_query(F.data == 'confirm')
-async def cb_confirm(query: types.CallbackQuery):
-    uid = query.from_user.id
-    slots = user_data.pop(uid, None)
-    await query.message.edit_reply_markup()
-    if slots:
-        slots.pop('confirm', None)
-        if slots.get('transport', '').lower() in {'автобус', 'bus', 'автобусы'}:
-            url = build_routes_url(slots['from'], slots['to'], slots['date'])
-            if link_has_routes(slots['from'], slots['to'], slots['date']):
-                await query.message.answer(url)
-
-            else:
-                await query.message.answer('Рейсы не найдены.')
-        await notify_manager(slots, query.from_user)
-        save_trip({
-            'user_id': uid,
-            'origin': slots['from'],
-            'destination': slots['to'],
-            'date': slots['date'],
-            'transport': slots['transport'],
-            'status': 'active',
-        })
-        response = {
-            "message": "Отправили заявку менеджеру, скоро с вами свяжутся!"
-        }
-        await query.message.answer(
-            f"\n```\n{json.dumps(response, ensure_ascii=False, indent=2)}\n```"
-        )
-    await query.answer()
-
-
-@dp.callback_query(F.data == 'reject')
-async def cb_reject(query: types.CallbackQuery):
-    user_data.pop(query.from_user.id, None)
-    await query.message.edit_reply_markup()
-    await query.message.answer('Бронирование отклонено. Если захотите изменить детали, просто напишите ещё раз.')
-    await query.answer()
-
-
-@dp.callback_query(F.data == 'cancel')
-async def cb_cancel(query: types.CallbackQuery):
-    user_data.pop(query.from_user.id, None)
-    await query.message.edit_reply_markup()
-    await query.message.answer('Бронирование отменено. Обращайтесь, если понадобится новая поездка!')
-    await query.answer()
 
 
 async def main():
