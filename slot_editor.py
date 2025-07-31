@@ -7,7 +7,7 @@ from utils import normalize_date
 logger = logging.getLogger(__name__)
 
 
-def update_slots(
+async def update_slots(
     user_id: int,
     message: str,
     session_data: Dict[int, Dict[str, Optional[str]]],
@@ -49,7 +49,7 @@ def update_slots(
 
     logger.info("Editing slots for %s: %s", user_id, message)
 
-    parsed = parse_slots(message, question)
+    parsed = await parse_slots(message, question)
     user_date = normalize_date(message)
     if user_date:
         parsed['date'] = user_date
