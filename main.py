@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+from datetime import datetime, timedelta
 from typing import Dict, Optional
 
 from aiogram import Bot, Dispatcher, types
@@ -31,6 +32,8 @@ manager_bot = Bot(token=MANAGER_BOT_TOKEN) if MANAGER_BOT_TOKEN else None
 
 # Сохранение слотов по user_id
 user_data: Dict[int, Dict[str, Optional[str]]] = {}
+# Последнее время активности пользователя
+last_seen: Dict[int, datetime] = {}
 
 # Вопросы по умолчанию, если генерация через GPT не сработала
 DEFAULT_QUESTIONS = {
@@ -73,13 +76,25 @@ async def notify_manager(slots: Dict[str, Optional[str]], user: types.User):
         logger.exception("Failed to notify manager: %s", e)
 
 
+async def greet_if_needed(message: Message):
+    uid = message.from_user.id
+    now = datetime.utcnow()
+    last = last_seen.get(uid)
+    if not last or now - last > timedelta(hours=2):
+        await message.answer(
+            'Привет! Я помогу забронировать поездку. Расскажите, куда и когда хотите ехать 😄'
+        )
+    last_seen[uid] = now
+
+
 @dp.message(Command('start'))
 async def cmd_start(message: Message):
-    await message.answer('Привет! Я помогу забронировать поездку. Расскажите, куда и когда хотите ехать 😄')
+    await greet_if_needed(message)
 
 
 @dp.message(Command('help', 'info'))
 async def cmd_help(message: Message):
+    await greet_if_needed(message)
     await message.answer(
         'Отправьте сообщение, например: "Хочу завтра в Москву на поезде".\n'
         'Доступные команды:\n'
@@ -90,6 +105,7 @@ async def cmd_help(message: Message):
 
 @dp.message(Command('cancel'))
 async def cmd_cancel(message: Message):
+    await greet_if_needed(message)
     user_data.pop(message.from_user.id, None)
     await message.answer('Хорошо, начинаем заново. Расскажите ещё раз о поездке!')
 
@@ -134,6 +150,7 @@ async def handle_slots(message: Message):
 
 @dp.message()
 async def handle_message(message: Message):
+    await greet_if_needed(message)
     uid = message.from_user.id
     action = parse_history_request(message.text)
 
