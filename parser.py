@@ -77,6 +77,8 @@ QUESTION_PROMPT = (
     'если транспорт — спроси, на самолете, автобусе или поезде.'
 )
 
+TRANSPORT_QUESTION_FALLBACK = 'Какой транспорт предпочтёте: автобус, поезд или самолёт?'
+
 CONFIRM_PROMPT = (
     'Спроси верно ли бронирование используя данные: '
     'откуда {origin}, куда {destination}, дата {date}, транспорт {transport}. '
@@ -158,8 +160,8 @@ async def generate_fallback(text: str, fallback: str) -> str:
     return result or fallback
 
 
-def parse_transport(text: str) -> str:
-    """Return normalized transport type from free-form text."""
+def parse_transport(text: str) -> Optional[str]:
+    """Return normalized transport type from free-form text or ``None``."""
     text = text.lower()
     if re.search(r"\b(автобус|маршрутк|atlas|шкипер|bus|бус|бас)\w*", text):
         return "bus"
@@ -167,7 +169,7 @@ def parse_transport(text: str) -> str:
         return "plane"
     if re.search(r"\b(поезд|электричк|ржд|сапсан|train|ж.?д)\w*", text):
         return "train"
-    return "train"
+    return None
 
 
 def _extract_json(text: str) -> str:
@@ -224,8 +226,14 @@ async def parse_slots(text: str, question: Optional[str] = None) -> Dict[str, Op
     return {'from': None, 'to': None, 'date': None, 'transport': None}
 
 
-async def complete_slots(slots: Dict[str, Optional[str]]) -> Dict[str, Optional[str]]:
-    """Дополняет или исправляет уже известные слоты через YandexGPT."""
+async def complete_slots(
+    slots: Dict[str, Optional[str]],
+) -> tuple[Dict[str, Optional[str]], Optional[str]]:
+    """Дополняет или исправляет уже известные слоты через YandexGPT.
+
+    Возвращает кортеж ``(slots, question)``, где ``question`` содержит текст
+    уточняющего вопроса по транспорту, если он так и не был распознан.
+    """
     logger.info("Current slots: %s", slots)
     headers = {
         'Authorization': f'Bearer {YANDEX_IAM_TOKEN}',
@@ -243,6 +251,7 @@ async def complete_slots(slots: Dict[str, Optional[str]]) -> Dict[str, Optional[
             {'role': 'user', 'text': json.dumps(slots, ensure_ascii=False)},
         ],
     }
+    question: Optional[str] = None
     try:
         async with aiohttp.ClientSession() as session:
             async with session.post(API_URL, headers=headers, json=payload, timeout=30) as response:
@@ -252,7 +261,7 @@ async def complete_slots(slots: Dict[str, Optional[str]]) -> Dict[str, Optional[
                 logger.info("Yandex completion: %s", answer)
                 updated = json.loads(_extract_json(answer))
 
-                return {
+                result = {
                     'from': updated.get('origin') or updated.get('from'),
                     'to': updated.get('destination') or updated.get('to'),
                     'date': updated.get('date'),
@@ -260,9 +269,15 @@ async def complete_slots(slots: Dict[str, Optional[str]]) -> Dict[str, Optional[
                 }
     except (asyncio.TimeoutError, aiohttp.ClientError) as e:
         logger.exception('Failed to complete slots: %s', e)
+        result = slots
     except Exception as e:
         logger.exception('Failed to complete slots: %s', e)
-    return slots
+        result = slots
+
+    if not result.get('transport'):
+        question = await generate_question('transport', TRANSPORT_QUESTION_FALLBACK)
+
+    return result, question
 
 
 # --- History requests ------------------------------------------------------

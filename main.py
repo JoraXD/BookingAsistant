@@ -134,7 +134,7 @@ async def handle_slots(message: Message, state: Optional[Dict[str, Optional[str]
     session_data = {uid: state}
     slots, changed = await update_slots(uid, text, session_data, question)
 
-    slots = await complete_slots(slots)
+    slots, transport_question = await complete_slots(slots)
 
     state = session_data[uid] = slots
     try:
@@ -159,7 +159,10 @@ async def handle_slots(message: Message, state: Optional[Dict[str, Optional[str]
         return
 
     if missing:
-        question_text = await generate_question(missing[0], DEFAULT_QUESTIONS[missing[0]])
+        if transport_question and 'transport' in missing:
+            question_text = transport_question
+        else:
+            question_text = await generate_question(missing[0], DEFAULT_QUESTIONS[missing[0]])
         state['last_question'] = question_text
         try:
             await set_user_state(uid, state)
@@ -304,7 +307,7 @@ async def handle_message(message: Message):
             state.pop('confirm', None)
             session_data = {uid: state}
             slots, changed = await update_slots(uid, message.text, session_data)
-            slots = await complete_slots(slots)
+            slots, transport_question = await complete_slots(slots)
             state = session_data[uid]
             changed_msg = ''
             if changed:
@@ -316,7 +319,10 @@ async def handle_message(message: Message):
 
             missing = get_missing_slots(slots)
             if missing:
-                question_text = await generate_question(missing[0], DEFAULT_QUESTIONS[missing[0]])
+                if transport_question and 'transport' in missing:
+                    question_text = transport_question
+                else:
+                    question_text = await generate_question(missing[0], DEFAULT_QUESTIONS[missing[0]])
                 state['last_question'] = question_text
                 try:
                     await set_user_state(uid, state)

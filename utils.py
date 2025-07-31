@@ -60,6 +60,6 @@ TRANSPORT_RU = {
 def display_transport(value: Optional[str]) -> str:
     """Return Russian name for a transport code."""
     if not value:
-        return ''
+        return 'не указан'
     return TRANSPORT_RU.get(value.lower(), value)
 
