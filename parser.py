@@ -21,7 +21,9 @@ WEEKDAYS_RU = [
 TODAY_WEEKDAY = WEEKDAYS_RU[datetime.now().weekday()]
 
 SYSTEM_PROMPT = (
-    'Ты — умный ассистент по бронированию поездок. '
+    'Ты — дружелюбный помощник по бронированию поездок, представляешь компанию-агрегатор, к которой обращаются за помощью в поисках билетов. '
+    'Общайся как живой человек: используй разные фразы, но при этом будь сдержан, в первую очередь общаешься с клиентом, а не другом '
+    'помогай догадками, если текст неполный. Не повторяйся и будь вежлив. '
     'Твоя цель — из любого пользовательского текста извлечь 4 параметра:\n'
     '- origin — город отправления\n'
     '- destination — город назначения\n'
@@ -62,6 +64,76 @@ COMPLETE_PROMPT = (
     f'преобразуй её в ближайшую будущую дату в формате YYYY-MM-DD, считая, что сегодня {TODAY_DATE} {TODAY_WEEKDAY}. '
     'Если дата уже прошла на этой неделе, выбери следующую неделю.'
 )
+
+# --- Dynamic text generation -----------------------------------------------
+
+QUESTION_PROMPT = (
+    'Ты — дружелюбный помощник по бронированию поездок, представляешь компанию-агрегатор, к которой обращаются за помощью в поисках билетов. Здороваться не надо'
+    'Сформулируй короткий вопрос, чтобы узнать "{slot}". Без лишней воды, но красиво и лаконично. Если это город назначения, то впорос по типу уточни куда пользователь хотел бы поехать, если город отправления, то откуда отправляется, если транспорт то спроси на самолете или автобусе или поезде '
+)
+
+CONFIRM_PROMPT = (
+    'Ты — дружелюбный помощник по бронированию поездок, представляешь компанию-агрегатор, к которой обращаются за помощью в поисках билетов. Здороваться не надо. Спроси верно ли бронирование используя данные: '
+    'откуда {origin}, куда {destination}, дата {date}, транспорт {transport}. '
+    'Скажи коротко и живо, спроси пользователя подтвердить.'
+)
+
+FALLBACK_PROMPT = (
+    'Ты — дружелюбный помощник по бронированию поездок, представляешь компанию-агрегатор, к которой обращаются за помощью в поисках билетов.Здороваться не надо.'
+    'Пользователь написал: "{text}". Ответь вежливо, что понял не всё, '
+    'и попроси уточнить или повторить.'
+)
+
+
+def _generate_text(prompt: str) -> str:
+    """Call YandexGPT with a simple text prompt and return the response."""
+    headers = {
+        'Authorization': f'Bearer {YANDEX_IAM_TOKEN}',
+        'Content-Type': 'application/json',
+    }
+    payload = {
+        'modelUri': MODEL_URI,
+        'completionOptions': {
+            'stream': False,
+            'temperature': 0.5,
+            'maxTokens': 100,
+        },
+        'messages': [{'role': 'user', 'text': prompt}],
+    }
+    try:
+        response = requests.post(API_URL, headers=headers, json=payload, timeout=15)
+        response.raise_for_status()
+        data = response.json()
+        return data.get('result', {}).get('alternatives', [{}])[0].get('message', {}).get('text', '').strip()
+    except Exception as e:
+        logger.exception('Failed to generate text: %s', e)
+        return ''
+
+
+def generate_question(slot: str, fallback: str) -> str:
+    """Return friendly question for missing slot via YandexGPT."""
+    prompt = QUESTION_PROMPT.format(slot=slot)
+    text = _generate_text(prompt)
+    return text or fallback
+
+
+def generate_confirmation(slots: Dict[str, Optional[str]], fallback: str) -> str:
+    """Return booking confirmation message via YandexGPT."""
+    prompt = CONFIRM_PROMPT.format(
+        origin=slots.get('from', ''),
+        destination=slots.get('to', ''),
+        date=slots.get('date', ''),
+        transport=slots.get('transport', ''),
+    )
+    text = _generate_text(prompt)
+    return text or fallback
+
+
+def generate_fallback(text: str, fallback: str) -> str:
+    """Return friendly fallback message via YandexGPT."""
+    prompt = FALLBACK_PROMPT.format(text=text)
+    result = _generate_text(prompt)
+    return result or fallback
 
 
 def parse_transport(text: str) -> str:

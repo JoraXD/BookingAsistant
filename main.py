@@ -8,7 +8,13 @@ from aiogram.filters import Command
 from aiogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup
 
 from config import TELEGRAM_BOT_TOKEN, MANAGER_BOT_TOKEN, MANAGER_CHAT_ID
-from parser import complete_slots, parse_history_request
+from parser import (
+    complete_slots,
+    parse_history_request,
+    generate_question,
+    generate_confirmation,
+    generate_fallback,
+)
 from atlas import build_routes_url, link_has_routes
 
 from slot_editor import update_slots
@@ -36,13 +42,18 @@ confirm_keyboard = InlineKeyboardMarkup(
 # Сохранение слотов по user_id
 user_data: Dict[int, Dict[str, Optional[str]]] = {}
 
-# Вопросы для уточнения недостающих слотов
-QUESTIONS = {
-    'from': 'Из какого города вы отправляетесь?',
-    'to': 'В какой город хотите отправиться?',
-    'date': 'На какую дату планируете поездку?',
-    'transport': 'Какой транспорт предпочитаете: автобус, поезд или самолет?'
+# Вопросы по умолчанию, если генерация через GPT не сработала
+DEFAULT_QUESTIONS = {
+    'from': 'Не подскажете, из какого города выезжаем? 🙂',
+    'to': 'Отлично, осталось уточнить пункт назначения 😉',
+    'date': 'Хорошо, а дату поездки помните?',
+    'transport': 'Какой транспорт предпочтёте: автобус, поезд или самолёт?'
 }
+
+# Ответ по умолчанию, если не удалось распознать сообщение
+DEFAULT_FALLBACK = (
+    'Кажется, что-то пропустил… Можете повторить, пожалуйста?'
+)
 
 # Названия слотов для сообщений об изменениях
 FIELD_NAMES = {
@@ -74,7 +85,7 @@ async def notify_manager(slots: Dict[str, Optional[str]], user: types.User):
 
 @dp.message(Command('start'))
 async def cmd_start(message: Message):
-    await message.answer('Привет! Я помогу забронировать поездку. Опишите её в свободной форме.')
+    await message.answer('Привет! Я помогу забронировать поездку. Расскажите, куда и когда хотите ехать 😄')
 
 
 @dp.message(Command('help', 'info'))
@@ -90,7 +101,7 @@ async def cmd_help(message: Message):
 @dp.message(Command('cancel'))
 async def cmd_cancel(message: Message):
     user_data.pop(message.from_user.id, None)
-    await message.answer('Сессия сброшена. Опишите новую поездку.')
+    await message.answer('Хорошо, начинаем заново. Расскажите ещё раз о поездке!')
 
 
 async def handle_slots(message: Message):
@@ -113,14 +124,19 @@ async def handle_slots(message: Message):
         ]
         changed_msg = 'Изменил ' + ', '.join(parts) + '.\n'
 
+    if not changed and all(not v for v in slots.values()):
+        text = generate_fallback(message.text, DEFAULT_FALLBACK)
+        await message.answer(text)
+        return
+
     if missing:
-        question_text = QUESTIONS[missing[0]]
+        question_text = generate_question(missing[0], DEFAULT_QUESTIONS[missing[0]])
         user_data[uid]['last_question'] = question_text
         await message.answer(changed_msg + question_text)
     else:
-        summary = (
-            f"Подтвердите поездку из {slots['from']} в {slots['to']} "
-            f"{slots['date']} на {display_transport(slots['transport'])}"
+        summary = generate_confirmation(
+            slots,
+            f"Отлично, вот что получилось: {display_transport(slots['transport'])} {slots['from']} → {slots['to']} {slots['date']}. Всё верно?",
         )
         await message.answer(changed_msg + summary, reply_markup=confirm_keyboard)
         user_data[uid]['confirm'] = True
@@ -185,7 +201,7 @@ async def handle_message(message: Message):
             )
         elif message.text.lower() in {'отмена', 'cancel'}:
             user_data.pop(uid, None)
-            await message.answer('Бронирование отменено. Начните заново.')
+            await message.answer('Бронирование отменено. Если захотите, можем попробовать ещё раз!')
         else:
             # Пользователь хочет изменить слоты во время подтверждения
             user_data[uid].pop('confirm', None)
@@ -201,13 +217,13 @@ async def handle_message(message: Message):
 
             missing = get_missing_slots(slots)
             if missing:
-                question_text = QUESTIONS[missing[0]]
+                question_text = generate_question(missing[0], DEFAULT_QUESTIONS[missing[0]])
                 user_data[uid]['last_question'] = question_text
                 await message.answer(changed_msg + question_text)
             else:
-                summary = (
-                    f"Подтвердите поездку из {slots['from']} в {slots['to']} "
-                    f"{slots['date']} на {display_transport(slots['transport'])}"
+                summary = generate_confirmation(
+                    slots,
+                    f"Отлично, вот что получилось: {display_transport(slots['transport'])} {slots['from']} → {slots['to']} {slots['date']}. Всё верно?",
                 )
                 await message.answer(
                     changed_msg + summary,
@@ -254,7 +270,7 @@ async def cb_confirm(query: types.CallbackQuery):
 async def cb_reject(query: types.CallbackQuery):
     user_data.pop(query.from_user.id, None)
     await query.message.edit_reply_markup()
-    await query.message.answer('Бронирование отклонено. Начните заново.')
+    await query.message.answer('Бронирование отклонено. Если захотите изменить детали, просто напишите ещё раз.')
     await query.answer()
 
 
@@ -262,7 +278,7 @@ async def cb_reject(query: types.CallbackQuery):
 async def cb_cancel(query: types.CallbackQuery):
     user_data.pop(query.from_user.id, None)
     await query.message.edit_reply_markup()
-    await query.message.answer('Бронирование отменено. Начните заново.')
+    await query.message.answer('Бронирование отменено. Обращайтесь, если понадобится новая поездка!')
     await query.answer()
 
 
