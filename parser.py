@@ -228,13 +228,23 @@ async def parse_slots(text: str, question: Optional[str] = None) -> Dict[str, Op
 
 async def complete_slots(
     slots: Dict[str, Optional[str]],
+    missing: list[str],
 ) -> tuple[Dict[str, Optional[str]], Optional[str]]:
     """Дополняет или исправляет уже известные слоты через YandexGPT.
+
+    Принимает список незаполненных ``missing`` слотов и запрашивает модель
+    только по ним. Если список пуст, запрос к API не выполняется и текущие
+    данные возвращаются без изменений.
 
     Возвращает кортеж ``(slots, question)``, где ``question`` содержит текст
     уточняющего вопроса по транспорту, если он так и не был распознан.
     """
-    logger.info("Current slots: %s", slots)
+    logger.info("Current slots: %s, missing: %s", slots, missing)
+
+    if not missing:
+        logger.info("No missing slots, skipping completion API call")
+        return slots, None
+
     headers = {
         'Authorization': f'Bearer {YANDEX_IAM_TOKEN}',
         'Content-Type': 'application/json',
@@ -248,10 +258,14 @@ async def complete_slots(
         },
         'messages': [
             {'role': 'system', 'text': build_prompt(COMPLETE_PROMPT)},
-            {'role': 'user', 'text': json.dumps(slots, ensure_ascii=False)},
+            {
+                'role': 'user',
+                'text': json.dumps({k: slots.get(k) for k in missing}, ensure_ascii=False),
+            },
         ],
     }
     question: Optional[str] = None
+    result = slots
     try:
         async with aiohttp.ClientSession() as session:
             async with session.post(API_URL, headers=headers, json=payload, timeout=30) as response:
@@ -261,20 +275,21 @@ async def complete_slots(
                 logger.info("Yandex completion: %s", answer)
                 updated = json.loads(_extract_json(answer))
 
-                result = {
+                mapping = {
                     'from': updated.get('origin') or updated.get('from'),
                     'to': updated.get('destination') or updated.get('to'),
                     'date': updated.get('date'),
                     'transport': updated.get('transport'),
                 }
+                for key in missing:
+                    if mapping.get(key):
+                        result[key] = mapping[key]
     except (asyncio.TimeoutError, aiohttp.ClientError) as e:
         logger.exception('Failed to complete slots: %s', e)
-        result = slots
     except Exception as e:
         logger.exception('Failed to complete slots: %s', e)
-        result = slots
 
-    if not result.get('transport'):
+    if 'transport' in missing and not result.get('transport'):
         question = await generate_question('transport', TRANSPORT_QUESTION_FALLBACK)
 
     return result, question
