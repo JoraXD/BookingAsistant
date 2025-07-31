@@ -134,7 +134,12 @@ async def handle_slots(message: Message, state: Optional[Dict[str, Optional[str]
     session_data = {uid: state}
     slots, changed = await update_slots(uid, text, session_data, question)
 
-    slots, transport_question = await complete_slots(slots)
+    missing_before = get_missing_slots(slots)
+    if missing_before:
+        slots, transport_question = await complete_slots(slots, missing_before)
+    else:
+        logger.info("All slots filled, skipping completion API call")
+        transport_question = None
 
     state = session_data[uid] = slots
     try:
@@ -307,7 +312,12 @@ async def handle_message(message: Message):
             state.pop('confirm', None)
             session_data = {uid: state}
             slots, changed = await update_slots(uid, message.text, session_data)
-            slots, transport_question = await complete_slots(slots)
+            missing_before = get_missing_slots(slots)
+            if missing_before:
+                slots, transport_question = await complete_slots(slots, missing_before)
+            else:
+                logger.info("All slots filled, skipping completion API call")
+                transport_question = None
             state = session_data[uid]
             changed_msg = ''
             if changed:

@@ -51,14 +51,14 @@ async def test_question_on_missing_transport():
     }
     with aioresponses() as m:
         m.post(parser.API_URL, exception=aiohttp.ClientError, repeat=True)
-        updated, question = await parser.complete_slots(slots)
+        updated, question = await parser.complete_slots(slots, ['transport'])
         assert ('POST', URL(parser.API_URL)) in m.requests
     assert updated['transport'] is None
     assert question == parser.TRANSPORT_QUESTION_FALLBACK
 
 
 @pytest.mark.asyncio
-async def test_transport_preserved():
+async def test_complete_slots_skipped_when_full():
     slots = {
         'from': 'Москва',
         'to': 'Казань',
@@ -66,8 +66,7 @@ async def test_transport_preserved():
         'transport': 'bus',
     }
     with aioresponses() as m:
-        m.post(parser.API_URL, exception=aiohttp.ClientError, repeat=True)
-        updated, question = await parser.complete_slots(slots)
-        assert ('POST', URL(parser.API_URL)) in m.requests
-    assert updated['transport'] == 'bus'
+        updated, question = await parser.complete_slots(slots, [])
+        assert ('POST', URL(parser.API_URL)) not in m.requests
+    assert updated == slots
     assert question is None
