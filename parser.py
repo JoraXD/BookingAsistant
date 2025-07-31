@@ -4,7 +4,8 @@ import re
 from datetime import datetime
 from typing import Dict, Optional
 
-import requests
+import aiohttp
+import asyncio
 
 from config import YANDEX_IAM_TOKEN, YANDEX_FOLDER_ID
 
@@ -101,7 +102,7 @@ HISTORY_PROMPT = (
 )
 
 
-def _generate_text(prompt: str) -> str:
+async def _generate_text(prompt: str) -> str:
     """Call YandexGPT with a simple text prompt and return the response."""
     headers = {
         'Authorization': f'Bearer {YANDEX_IAM_TOKEN}',
@@ -117,23 +118,26 @@ def _generate_text(prompt: str) -> str:
         'messages': [{'role': 'user', 'text': prompt}],
     }
     try:
-        response = requests.post(API_URL, headers=headers, json=payload, timeout=15)
-        response.raise_for_status()
-        data = response.json()
-        return data.get('result', {}).get('alternatives', [{}])[0].get('message', {}).get('text', '').strip()
+        async with aiohttp.ClientSession() as session:
+            async with session.post(API_URL, headers=headers, json=payload, timeout=15) as response:
+                response.raise_for_status()
+                data = await response.json()
+                return data.get('result', {}).get('alternatives', [{}])[0].get('message', {}).get('text', '').strip()
+    except (asyncio.TimeoutError, aiohttp.ClientError) as e:
+        logger.exception('Failed to generate text: %s', e)
     except Exception as e:
         logger.exception('Failed to generate text: %s', e)
-        return ''
+    return ''
 
 
-def generate_question(slot: str, fallback: str) -> str:
+async def generate_question(slot: str, fallback: str) -> str:
     """Return friendly question for missing slot via YandexGPT."""
     prompt = build_prompt(QUESTION_PROMPT.format(slot=slot))
-    text = _generate_text(prompt)
+    text = await _generate_text(prompt)
     return text or fallback
 
 
-def generate_confirmation(slots: Dict[str, Optional[str]], fallback: str) -> str:
+async def generate_confirmation(slots: Dict[str, Optional[str]], fallback: str) -> str:
     """Return booking confirmation message via YandexGPT."""
     prompt = build_prompt(
         CONFIRM_PROMPT.format(
@@ -143,14 +147,14 @@ def generate_confirmation(slots: Dict[str, Optional[str]], fallback: str) -> str
             transport=slots.get('transport', ''),
         )
     )
-    text = _generate_text(prompt)
+    text = await _generate_text(prompt)
     return text or fallback
 
 
-def generate_fallback(text: str, fallback: str) -> str:
+async def generate_fallback(text: str, fallback: str) -> str:
     """Return friendly fallback message via YandexGPT."""
     prompt = build_prompt(FALLBACK_PROMPT.format(text=text))
-    result = _generate_text(prompt)
+    result = await _generate_text(prompt)
     return result or fallback
 
 
@@ -178,7 +182,7 @@ def _extract_json(text: str) -> str:
     return text
 
 
-def parse_slots(text: str, question: Optional[str] = None) -> Dict[str, Optional[str]]:
+async def parse_slots(text: str, question: Optional[str] = None) -> Dict[str, Optional[str]]:
     """Отправляет текст (и контекст вопроса) в YandexGPT и возвращает словарь слотов."""
     if question:
         text = f"Вопрос: {question}\nОтвет: {text}"
@@ -200,24 +204,27 @@ def parse_slots(text: str, question: Optional[str] = None) -> Dict[str, Optional
         ],
     }
     try:
-        response = requests.post(API_URL, headers=headers, json=payload, timeout=30)
-        response.raise_for_status()
-        data = response.json()
-        answer = data.get('result', {}).get('alternatives', [{}])[0].get('message', {}).get('text', '')
-        logger.info("Yandex response: %s", answer)
-        slots = json.loads(_extract_json(answer))
-        return {
-            'from': slots.get('origin') or slots.get('from'),
-            'to': slots.get('destination') or slots.get('to'),
-            'date': slots.get('date'),
-            'transport': slots.get('transport'),
-        }
+        async with aiohttp.ClientSession() as session:
+            async with session.post(API_URL, headers=headers, json=payload, timeout=30) as response:
+                response.raise_for_status()
+                data = await response.json()
+                answer = data.get('result', {}).get('alternatives', [{}])[0].get('message', {}).get('text', '')
+                logger.info("Yandex response: %s", answer)
+                slots = json.loads(_extract_json(answer))
+                return {
+                    'from': slots.get('origin') or slots.get('from'),
+                    'to': slots.get('destination') or slots.get('to'),
+                    'date': slots.get('date'),
+                    'transport': slots.get('transport'),
+                }
+    except (asyncio.TimeoutError, aiohttp.ClientError) as e:
+        logger.exception('Failed to parse slots: %s', e)
     except Exception as e:
         logger.exception('Failed to parse slots: %s', e)
-        return {'from': None, 'to': None, 'date': None, 'transport': None}
+    return {'from': None, 'to': None, 'date': None, 'transport': None}
 
 
-def complete_slots(slots: Dict[str, Optional[str]]) -> Dict[str, Optional[str]]:
+async def complete_slots(slots: Dict[str, Optional[str]]) -> Dict[str, Optional[str]]:
     """Дополняет или исправляет уже известные слоты через YandexGPT."""
     logger.info("Current slots: %s", slots)
     headers = {
@@ -237,22 +244,25 @@ def complete_slots(slots: Dict[str, Optional[str]]) -> Dict[str, Optional[str]]:
         ],
     }
     try:
-        response = requests.post(API_URL, headers=headers, json=payload, timeout=30)
-        response.raise_for_status()
-        data = response.json()
-        answer = data.get('result', {}).get('alternatives', [{}])[0].get('message', {}).get('text', '')
-        logger.info("Yandex completion: %s", answer)
-        updated = json.loads(_extract_json(answer))
+        async with aiohttp.ClientSession() as session:
+            async with session.post(API_URL, headers=headers, json=payload, timeout=30) as response:
+                response.raise_for_status()
+                data = await response.json()
+                answer = data.get('result', {}).get('alternatives', [{}])[0].get('message', {}).get('text', '')
+                logger.info("Yandex completion: %s", answer)
+                updated = json.loads(_extract_json(answer))
 
-        return {
-            'from': updated.get('origin') or updated.get('from'),
-            'to': updated.get('destination') or updated.get('to'),
-            'date': updated.get('date'),
-            'transport': updated.get('transport'),
-        }
+                return {
+                    'from': updated.get('origin') or updated.get('from'),
+                    'to': updated.get('destination') or updated.get('to'),
+                    'date': updated.get('date'),
+                    'transport': updated.get('transport'),
+                }
+    except (asyncio.TimeoutError, aiohttp.ClientError) as e:
+        logger.exception('Failed to complete slots: %s', e)
     except Exception as e:
         logger.exception('Failed to complete slots: %s', e)
-        return slots
+    return slots
 
 
 # --- History requests ------------------------------------------------------
@@ -274,7 +284,7 @@ def _heuristic_history(text: str) -> Dict[str, Optional[str]]:
     return {'action': ''}
 
 
-def parse_history_request(text: str) -> Dict[str, Optional[str]]:
+async def parse_history_request(text: str) -> Dict[str, Optional[str]]:
     """Return structured history command using YandexGPT if available."""
     headers = {
         'Authorization': f'Bearer {YANDEX_IAM_TOKEN}',
@@ -293,25 +303,28 @@ def parse_history_request(text: str) -> Dict[str, Optional[str]]:
         ],
     }
     try:
-        response = requests.post(API_URL, headers=headers, json=payload, timeout=15)
-        response.raise_for_status()
-        data = response.json()
-        answer = data.get('result', {}).get('alternatives', [{}])[0].get('message', {}).get('text', '')
-        logger.info('History request result: %s', answer)
-        parsed = json.loads(_extract_json(answer))
-        action = parsed.get('action', '').strip()
-        if action:
-            return {
-                'action': action,
-                'destination': parsed.get('destination', '').strip(),
-                'limit': int(parsed.get('limit', 5) or 5),
-            }
+        async with aiohttp.ClientSession() as session:
+            async with session.post(API_URL, headers=headers, json=payload, timeout=15) as response:
+                response.raise_for_status()
+                data = await response.json()
+                answer = data.get('result', {}).get('alternatives', [{}])[0].get('message', {}).get('text', '')
+                logger.info('History request result: %s', answer)
+                parsed = json.loads(_extract_json(answer))
+                action = parsed.get('action', '').strip()
+                if action:
+                    return {
+                        'action': action,
+                        'destination': parsed.get('destination', '').strip(),
+                        'limit': int(parsed.get('limit', 5) or 5),
+                    }
+    except (asyncio.TimeoutError, aiohttp.ClientError) as e:
+        logger.exception('Failed to parse history request: %s', e)
     except Exception as e:
         logger.exception('Failed to parse history request: %s', e)
     return _heuristic_history(text)
 
 
-def parse_yes_no(text: str) -> str:
+async def parse_yes_no(text: str) -> str:
     """Return 'yes', 'no' or 'unknown' for arbitrary confirmation text."""
     headers = {
         'Authorization': f'Bearer {YANDEX_IAM_TOKEN}',
@@ -329,14 +342,17 @@ def parse_yes_no(text: str) -> str:
         ],
     }
     try:
-        response = requests.post(API_URL, headers=headers, json=payload, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-        answer = data.get('result', {}).get('alternatives', [{}])[0].get('message', {}).get('text', '')
-        parsed = json.loads(_extract_json(answer))
-        result = parsed.get('result', '').strip().lower()
-        if result in {'yes', 'no'}:
-            return result
+        async with aiohttp.ClientSession() as session:
+            async with session.post(API_URL, headers=headers, json=payload, timeout=10) as response:
+                response.raise_for_status()
+                data = await response.json()
+                answer = data.get('result', {}).get('alternatives', [{}])[0].get('message', {}).get('text', '')
+                parsed = json.loads(_extract_json(answer))
+                result = parsed.get('result', '').strip().lower()
+                if result in {'yes', 'no'}:
+                    return result
+    except (asyncio.TimeoutError, aiohttp.ClientError) as e:
+        logger.exception('Failed to parse yes/no: %s', e)
     except Exception as e:
         logger.exception('Failed to parse yes/no: %s', e)
 

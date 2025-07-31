@@ -7,7 +7,10 @@ import state_storage
 @pytest.mark.asyncio
 async def test_state_persistence():
     uid = 123456
-    await state_storage.clear_user_state(uid)
+    try:
+        await state_storage.clear_user_state(uid)
+    except state_storage.StateStorageError:
+        pytest.skip("database not available")
     await state_storage.set_user_state(uid, {"foo": "bar"})
     assert await state_storage.get_user_state(uid) == {"foo": "bar"}
     importlib.reload(state_storage)

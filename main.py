@@ -132,9 +132,9 @@ async def handle_slots(message: Message, state: Optional[Dict[str, Optional[str]
     question = state.pop('last_question', None)
 
     session_data = {uid: state}
-    slots, changed = update_slots(uid, text, session_data, question)
+    slots, changed = await update_slots(uid, text, session_data, question)
 
-    slots = complete_slots(slots)
+    slots = await complete_slots(slots)
 
     state = session_data[uid] = slots
     try:
@@ -154,12 +154,12 @@ async def handle_slots(message: Message, state: Optional[Dict[str, Optional[str]
         changed_msg = 'Изменил ' + ', '.join(parts) + '.\n'
 
     if not changed and all(not v for v in slots.values()):
-        text = generate_fallback(message.text, DEFAULT_FALLBACK)
+        text = await generate_fallback(message.text, DEFAULT_FALLBACK)
         await message.answer(text)
         return
 
     if missing:
-        question_text = generate_question(missing[0], DEFAULT_QUESTIONS[missing[0]])
+        question_text = await generate_question(missing[0], DEFAULT_QUESTIONS[missing[0]])
         state['last_question'] = question_text
         try:
             await set_user_state(uid, state)
@@ -167,7 +167,7 @@ async def handle_slots(message: Message, state: Optional[Dict[str, Optional[str]
             logger.exception("Failed to save state: %s", e)
         await message.answer(changed_msg + question_text)
     else:
-        summary = generate_confirmation(
+        summary = await generate_confirmation(
             slots,
             f"Отлично, вот что получилось: {display_transport(slots['transport'])} {slots['from']} → {slots['to']} {slots['date']}. Всё верно?",
         )
@@ -189,7 +189,7 @@ async def handle_message(message: Message):
         logger.exception("Failed to load state: %s", e)
         await message.answer('Сервис временно недоступен, попробуйте позже.')
         return
-    action = parse_history_request(message.text)
+    action = await parse_history_request(message.text)
 
     if action.get('action') == 'show':
         limit = int(action.get('limit', 5))
@@ -219,7 +219,7 @@ async def handle_message(message: Message):
         await message.answer('Поездка не найдена.')
         return
     if state.get('await_search'):
-        choice = parse_yes_no(message.text)
+        choice = await parse_yes_no(message.text)
         if choice == 'yes':
             slots = dict(state)
             slots.pop('await_search', None)
@@ -231,7 +231,7 @@ async def handle_message(message: Message):
                 return
             if slots.get('transport', '').lower() in {'автобус', 'bus', 'автобусы'}:
                 url = build_routes_url(slots['from'], slots['to'], slots['date'])
-                if link_has_routes(slots['from'], slots['to'], slots['date']):
+                if await link_has_routes(slots['from'], slots['to'], slots['date']):
                     await message.answer(url)
                 else:
                     await message.answer('Рейсы не найдены.')
@@ -289,7 +289,7 @@ async def handle_message(message: Message):
             await message.answer('Бронирование отменено. Если захотите, можем попробовать ещё раз!')
             return
 
-        choice = parse_yes_no(message.text)
+        choice = await parse_yes_no(message.text)
         if choice == 'yes':
             state.pop('confirm', None)
             state['await_search'] = True
@@ -303,8 +303,8 @@ async def handle_message(message: Message):
         else:
             state.pop('confirm', None)
             session_data = {uid: state}
-            slots, changed = update_slots(uid, message.text, session_data)
-            slots = complete_slots(slots)
+            slots, changed = await update_slots(uid, message.text, session_data)
+            slots = await complete_slots(slots)
             state = session_data[uid]
             changed_msg = ''
             if changed:
@@ -316,7 +316,7 @@ async def handle_message(message: Message):
 
             missing = get_missing_slots(slots)
             if missing:
-                question_text = generate_question(missing[0], DEFAULT_QUESTIONS[missing[0]])
+                question_text = await generate_question(missing[0], DEFAULT_QUESTIONS[missing[0]])
                 state['last_question'] = question_text
                 try:
                     await set_user_state(uid, state)
@@ -324,7 +324,7 @@ async def handle_message(message: Message):
                     logger.exception("Failed to save state: %s", e)
                 await message.answer(changed_msg + question_text)
             else:
-                summary = generate_confirmation(
+                summary = await generate_confirmation(
                     slots,
                     f"Отлично, вот что получилось: {display_transport(slots['transport'])} {slots['from']} → {slots['to']} {slots['date']}. Всё верно?",
                 )

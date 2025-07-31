@@ -1,5 +1,7 @@
 aiogram
 python-dotenv
 dateparser
-requests
+aiohttp
+aioresponses
+pytest-asyncio
 asyncpg
