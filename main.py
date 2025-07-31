@@ -22,6 +22,12 @@ from atlas import build_routes_url, link_has_routes
 from slot_editor import update_slots
 from utils import display_transport
 from storage import save_trip, get_last_trips, cancel_trip
+from state_storage import (
+    get_user_state,
+    set_user_state,
+    clear_user_state,
+    StateStorageError,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -30,8 +36,6 @@ bot = Bot(token=TELEGRAM_BOT_TOKEN)
 dp = Dispatcher()
 manager_bot = Bot(token=MANAGER_BOT_TOKEN) if MANAGER_BOT_TOKEN else None
 
-# Сохранение слотов по user_id
-user_data: Dict[int, Dict[str, Optional[str]]] = {}
 # Последнее время активности пользователя
 last_seen: Dict[int, datetime] = {}
 
@@ -106,20 +110,39 @@ async def cmd_help(message: Message):
 @dp.message(Command('cancel'))
 async def cmd_cancel(message: Message):
     await greet_if_needed(message)
-    user_data.pop(message.from_user.id, None)
+    try:
+        await clear_user_state(message.from_user.id)
+    except StateStorageError as e:
+        logger.exception("Failed to clear state: %s", e)
+        await message.answer('Сервис временно недоступен, попробуйте позже.')
+        return
     await message.answer('Хорошо, начинаем заново. Расскажите ещё раз о поездке!')
 
 
-async def handle_slots(message: Message):
+async def handle_slots(message: Message, state: Optional[Dict[str, Optional[str]]] = None):
     text = message.text
     uid = message.from_user.id
-    question = user_data.get(uid, {}).pop('last_question', None)
+    if state is None:
+        try:
+            state = await get_user_state(uid) or {}
+        except StateStorageError as e:
+            logger.exception("Failed to load state: %s", e)
+            await message.answer('Сервис временно недоступен, попробуйте позже.')
+            return
+    question = state.pop('last_question', None)
 
-    slots, changed = update_slots(uid, text, user_data, question)
+    session_data = {uid: state}
+    slots, changed = update_slots(uid, text, session_data, question)
 
     slots = complete_slots(slots)
 
-    user_data[uid] = slots
+    state = session_data[uid] = slots
+    try:
+        await set_user_state(uid, state)
+    except StateStorageError as e:
+        logger.exception("Failed to save state: %s", e)
+        await message.answer('Сервис временно недоступен, попробуйте позже.')
+        return
     missing = get_missing_slots(slots)
 
     changed_msg = ''
@@ -137,7 +160,11 @@ async def handle_slots(message: Message):
 
     if missing:
         question_text = generate_question(missing[0], DEFAULT_QUESTIONS[missing[0]])
-        user_data[uid]['last_question'] = question_text
+        state['last_question'] = question_text
+        try:
+            await set_user_state(uid, state)
+        except StateStorageError as e:
+            logger.exception("Failed to save state: %s", e)
         await message.answer(changed_msg + question_text)
     else:
         summary = generate_confirmation(
@@ -145,13 +172,23 @@ async def handle_slots(message: Message):
             f"Отлично, вот что получилось: {display_transport(slots['transport'])} {slots['from']} → {slots['to']} {slots['date']}. Всё верно?",
         )
         await message.answer(changed_msg + summary)
-        user_data[uid]['confirm'] = True
+        state['confirm'] = True
+        try:
+            await set_user_state(uid, state)
+        except StateStorageError as e:
+            logger.exception("Failed to save state: %s", e)
 
 
 @dp.message()
 async def handle_message(message: Message):
     await greet_if_needed(message)
     uid = message.from_user.id
+    try:
+        state = await get_user_state(uid) or {}
+    except StateStorageError as e:
+        logger.exception("Failed to load state: %s", e)
+        await message.answer('Сервис временно недоступен, попробуйте позже.')
+        return
     action = parse_history_request(message.text)
 
     if action.get('action') == 'show':
@@ -181,11 +218,17 @@ async def handle_message(message: Message):
                     return
         await message.answer('Поездка не найдена.')
         return
-    if user_data.get(uid, {}).get('await_search'):
+    if state.get('await_search'):
         choice = parse_yes_no(message.text)
         if choice == 'yes':
-            slots = user_data.pop(uid)
+            slots = dict(state)
             slots.pop('await_search', None)
+            try:
+                await clear_user_state(uid)
+            except StateStorageError as e:
+                logger.exception("Failed to clear state: %s", e)
+                await message.answer('Сервис временно недоступен, попробуйте позже.')
+                return
             if slots.get('transport', '').lower() in {'автобус', 'bus', 'автобусы'}:
                 url = build_routes_url(slots['from'], slots['to'], slots['date'])
                 if link_has_routes(slots['from'], slots['to'], slots['date']):
@@ -208,8 +251,14 @@ async def handle_message(message: Message):
                 f"\n```\n{json.dumps(response, ensure_ascii=False, indent=2)}\n```"
             )
         elif choice == 'no':
-            slots = user_data.pop(uid)
+            slots = dict(state)
             slots.pop('await_search', None)
+            try:
+                await clear_user_state(uid)
+            except StateStorageError as e:
+                logger.exception("Failed to clear state: %s", e)
+                await message.answer('Сервис временно недоступен, попробуйте позже.')
+                return
             await notify_manager(slots, message.from_user)
             save_trip({
                 'user_id': uid,
@@ -229,23 +278,34 @@ async def handle_message(message: Message):
             await message.answer("Напишите, пожалуйста, да или нет.")
         return
 
-    if user_data.get(uid, {}).get('confirm'):
+    if state.get('confirm'):
         if 'отмен' in message.text.lower():
-            user_data.pop(uid, None)
+            try:
+                await clear_user_state(uid)
+            except StateStorageError as e:
+                logger.exception("Failed to clear state: %s", e)
+                await message.answer('Сервис временно недоступен, попробуйте позже.')
+                return
             await message.answer('Бронирование отменено. Если захотите, можем попробовать ещё раз!')
             return
 
         choice = parse_yes_no(message.text)
         if choice == 'yes':
-            slots = user_data[uid]
-            slots.pop('confirm', None)
-            slots['await_search'] = True
+            state.pop('confirm', None)
+            state['await_search'] = True
+            try:
+                await set_user_state(uid, state)
+            except StateStorageError as e:
+                logger.exception("Failed to save state: %s", e)
+                await message.answer('Сервис временно недоступен, попробуйте позже.')
+                return
             await message.answer('Хотите, я поищу билеты?')
         else:
-            # Пользователь хочет изменить слоты или отказался
-            user_data[uid].pop('confirm', None)
-            slots, changed = update_slots(uid, message.text, user_data)
+            state.pop('confirm', None)
+            session_data = {uid: state}
+            slots, changed = update_slots(uid, message.text, session_data)
             slots = complete_slots(slots)
+            state = session_data[uid]
             changed_msg = ''
             if changed:
                 parts = [
@@ -257,7 +317,11 @@ async def handle_message(message: Message):
             missing = get_missing_slots(slots)
             if missing:
                 question_text = generate_question(missing[0], DEFAULT_QUESTIONS[missing[0]])
-                user_data[uid]['last_question'] = question_text
+                state['last_question'] = question_text
+                try:
+                    await set_user_state(uid, state)
+                except StateStorageError as e:
+                    logger.exception("Failed to save state: %s", e)
                 await message.answer(changed_msg + question_text)
             else:
                 summary = generate_confirmation(
@@ -265,10 +329,14 @@ async def handle_message(message: Message):
                     f"Отлично, вот что получилось: {display_transport(slots['transport'])} {slots['from']} → {slots['to']} {slots['date']}. Всё верно?",
                 )
                 await message.answer(changed_msg + summary)
-                user_data[uid]['confirm'] = True
+                state['confirm'] = True
+                try:
+                    await set_user_state(uid, state)
+                except StateStorageError as e:
+                    logger.exception("Failed to save state: %s", e)
         return
 
-    await handle_slots(message)
+    await handle_slots(message, state)
 
 
 
