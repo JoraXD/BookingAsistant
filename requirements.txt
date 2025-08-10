@@ -5,3 +5,4 @@ aiohttp
 aioresponses
 pytest-asyncio
 asyncpg
+fpdf2

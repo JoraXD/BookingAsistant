@@ -47,6 +47,13 @@ DEFAULT_QUESTIONS = {
     'transport': 'Какой транспорт предпочтёте: автобус, поезд или самолёт?'
 }
 
+# Дополнительные уточняющие вопросы после подтверждения бронирования
+EXTRA_QUESTIONS = {
+    'time': 'Во сколько примерно хотите вылететь?',
+    'baggage': 'Нужен ли дополнительный багаж?',
+    'passengers': 'Сколько пассажиров поедет?'
+}
+
 # Ответ по умолчанию, если не удалось распознать сообщение
 DEFAULT_FALLBACK = (
     'Кажется, что-то пропустил… Можете повторить, пожалуйста?'
@@ -61,8 +68,12 @@ FIELD_NAMES = {
 }
 
 
+# Слоты, необходимые для первоначального запроса
+REQUIRED_SLOTS = ['from', 'to', 'date', 'transport']
+
+
 def get_missing_slots(slots: Dict[str, Optional[str]]):
-    return [key for key, value in slots.items() if not value]
+    return [key for key in REQUIRED_SLOTS if not slots.get(key)]
 
 
 async def notify_manager(slots: Dict[str, Optional[str]], user: types.User):
@@ -226,6 +237,30 @@ async def handle_message(message: Message):
                     return
         await message.answer('Поездка не найдена.')
         return
+    if state.get('extra_questions'):
+        questions = state['extra_questions']
+        key = questions.pop(0)
+        state[key] = message.text
+        try:
+            await set_user_state(uid, state)
+        except StateStorageError as e:
+            logger.exception("Failed to save state: %s", e)
+            await message.answer('Сервис временно недоступен, попробуйте позже.')
+            return
+        if questions:
+            next_key = questions[0]
+            await message.answer(EXTRA_QUESTIONS[next_key])
+        else:
+            state.pop('extra_questions', None)
+            state['await_search'] = True
+            try:
+                await set_user_state(uid, state)
+            except StateStorageError as e:
+                logger.exception("Failed to save state: %s", e)
+                await message.answer('Сервис временно недоступен, попробуйте позже.')
+                return
+            await message.answer('Хотите, я поищу билеты?')
+        return
     if state.get('await_search'):
         choice = await parse_yes_no(message.text)
         if choice == 'yes':
@@ -250,7 +285,7 @@ async def handle_message(message: Message):
                 'destination': slots['to'],
                 'date': slots['date'],
                 'transport': slots['transport'],
-                'status': 'active',
+                'status': 'pending',
             })
             response = {
                 "message": "Отправили заявку менеджеру, скоро с вами свяжутся!",
@@ -274,7 +309,7 @@ async def handle_message(message: Message):
                 'destination': slots['to'],
                 'date': slots['date'],
                 'transport': slots['transport'],
-                'status': 'active',
+                'status': 'pending',
             })
             response = {
                 "message": "Отправили заявку менеджеру, скоро с вами свяжутся!",
@@ -300,14 +335,14 @@ async def handle_message(message: Message):
         choice = await parse_yes_no(message.text)
         if choice == 'yes':
             state.pop('confirm', None)
-            state['await_search'] = True
+            state['extra_questions'] = list(EXTRA_QUESTIONS.keys())
             try:
                 await set_user_state(uid, state)
             except StateStorageError as e:
                 logger.exception("Failed to save state: %s", e)
                 await message.answer('Сервис временно недоступен, попробуйте позже.')
                 return
-            await message.answer('Хотите, я поищу билеты?')
+            await message.answer(EXTRA_QUESTIONS[state['extra_questions'][0]])
         else:
             state.pop('confirm', None)
             session_data = {uid: state}
