@@ -2,10 +2,11 @@ import asyncio
 from aiogram import Bot, Dispatcher
 from aiogram.enums import ParseMode
 from aiogram.filters import Command
-from aiogram.types import Message
+from aiogram.types import Message, BufferedInputFile
 
-from config import MANAGER_BOT_TOKEN, TELEGRAM_BOT_TOKEN
+from config import MANAGER_BOT_TOKEN, TELEGRAM_BOT_TOKEN, PAYMENT_DETAILS
 import storage
+from fpdf import FPDF
 
 if not MANAGER_BOT_TOKEN:
     raise RuntimeError("MANAGER_BOT_TOKEN is not set")
@@ -28,8 +29,8 @@ def _parse_id(arg: str) -> int | None:
         return None
 
 
-@dp.message(Command('approve'))
-async def cmd_approve(message: Message):
+@dp.message(Command('accept'))
+async def cmd_accept(message: Message):
     parts = message.text.split()
     trip_id = _parse_id(parts[1]) if len(parts) > 1 else None
     if not trip_id:
@@ -39,9 +40,65 @@ async def cmd_approve(message: Message):
     if not trip:
         await message.answer('Заявка не найдена')
         return
-    storage.update_trip_status(trip_id, 'approved')
-    await message.answer(f"Заявка {trip_id} одобрена")
-    await user_bot.send_message(trip['user_id'], f"Вашу заявку №{trip_id} одобрили")
+    storage.update_trip_status(trip_id, 'accepted')
+    await message.answer(f"Заявка {trip_id} принята")
+    await user_bot.send_message(trip['user_id'], f"Вашу заявку №{trip_id} приняли в работу")
+
+
+@dp.message(Command('price'))
+async def cmd_price(message: Message):
+    parts = message.text.split()
+    trip_id = _parse_id(parts[1]) if len(parts) > 2 else None
+    price = parts[2] if len(parts) > 2 else None
+    if not trip_id or price is None:
+        await message.answer('Некорректные параметры команды')
+        return
+    trip = storage.get_trip(trip_id)
+    if not trip:
+        await message.answer('Заявка не найдена')
+        return
+    storage.update_trip_status(trip_id, 'awaiting_payment')
+    await message.answer(f"Заявка {trip_id} ожидает оплаты")
+    await user_bot.send_message(
+        trip['user_id'],
+        f"Стоимость вашей заявки №{trip_id}: {price}. Оплатите по реквизитам: {PAYMENT_DETAILS}"
+    )
+
+
+def _generate_ticket_pdf(trip: dict) -> bytes:
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font('Helvetica', size=14)
+    pdf.cell(0, 10, text='Ticket', new_x='LMARGIN', new_y='NEXT', align='C')
+    pdf.ln(10)
+    pdf.set_font('Helvetica', size=12)
+    pdf.multi_cell(
+        0,
+        10,
+        text=f"Route: {trip['origin']} -> {trip['destination']}\nDate: {trip['date']}\nTransport: {trip['transport']}"
+    )
+    return bytes(pdf.output(dest='S'))
+
+
+@dp.message(Command('confirm'))
+async def cmd_confirm(message: Message):
+    parts = message.text.split()
+    trip_id = _parse_id(parts[1]) if len(parts) > 1 else None
+    if not trip_id:
+        await message.answer('Некорректный ID заявки')
+        return
+    trip = storage.get_trip(trip_id)
+    if not trip:
+        await message.answer('Заявка не найдена')
+        return
+    storage.update_trip_status(trip_id, 'confirmed')
+    await message.answer(f"Заявка {trip_id} подтверждена")
+    pdf_bytes = _generate_ticket_pdf(trip)
+    await user_bot.send_document(
+        trip['user_id'],
+        BufferedInputFile(pdf_bytes, filename=f'ticket_{trip_id}.pdf'),
+        caption='Оплата получена, ваш билет готов'
+    )
 
 
 @dp.message(Command('reject'))
