@@ -6,6 +6,8 @@ from typing import Dict, Optional
 
 import aiohttp
 import asyncio
+import ssl
+import certifi
 
 from config import YANDEX_IAM_TOKEN, YANDEX_FOLDER_ID
 
@@ -13,6 +15,15 @@ logger = logging.getLogger(__name__)
 
 API_URL = 'https://llm.api.cloud.yandex.net/foundationModels/v1/completion'
 MODEL_URI = f'gpt://{YANDEX_FOLDER_ID}/yandexgpt-lite'
+
+# Reuse a single SSL context with certifi's CA bundle to avoid certificate
+# verification issues in environments without system certificates
+SSL_CONTEXT = ssl.create_default_context(cafile=certifi.where())
+
+
+def _session() -> aiohttp.ClientSession:
+    """Return ``aiohttp`` session with configured SSL context."""
+    return aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=SSL_CONTEXT))
 
 TODAY_DATE = datetime.now().strftime('%Y-%m-%d')
 WEEKDAYS_RU = [
@@ -120,7 +131,7 @@ async def _generate_text(prompt: str) -> str:
         'messages': [{'role': 'user', 'text': prompt}],
     }
     try:
-        async with aiohttp.ClientSession() as session:
+        async with _session() as session:
             async with session.post(API_URL, headers=headers, json=payload, timeout=15) as response:
                 response.raise_for_status()
                 data = await response.json()
@@ -206,7 +217,7 @@ async def parse_slots(text: str, question: Optional[str] = None) -> Dict[str, Op
         ],
     }
     try:
-        async with aiohttp.ClientSession() as session:
+        async with _session() as session:
             async with session.post(API_URL, headers=headers, json=payload, timeout=30) as response:
                 response.raise_for_status()
                 data = await response.json()
@@ -267,7 +278,7 @@ async def complete_slots(
     question: Optional[str] = None
     result = slots
     try:
-        async with aiohttp.ClientSession() as session:
+        async with _session() as session:
             async with session.post(API_URL, headers=headers, json=payload, timeout=30) as response:
                 response.raise_for_status()
                 data = await response.json()
@@ -333,7 +344,7 @@ async def parse_history_request(text: str) -> Dict[str, Optional[str]]:
         ],
     }
     try:
-        async with aiohttp.ClientSession() as session:
+        async with _session() as session:
             async with session.post(API_URL, headers=headers, json=payload, timeout=15) as response:
                 response.raise_for_status()
                 data = await response.json()
@@ -372,7 +383,7 @@ async def parse_yes_no(text: str) -> str:
         ],
     }
     try:
-        async with aiohttp.ClientSession() as session:
+        async with _session() as session:
             async with session.post(API_URL, headers=headers, json=payload, timeout=10) as response:
                 response.raise_for_status()
                 data = await response.json()

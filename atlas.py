@@ -3,16 +3,24 @@ from typing import List, Dict, Optional
 
 import aiohttp
 import asyncio
+import ssl
+import certifi
 
 SEARCH_URL = "https://atlasbus.ru/api/rasp/v3/routes/search"
 CITY_URL = "https://atlasbus.ru/api/geo/v1/cities/search"
+
+SSL_CONTEXT = ssl.create_default_context(cafile=certifi.where())
+
+
+def _session() -> aiohttp.ClientSession:
+    return aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=SSL_CONTEXT))
 
 
 async def search_city_id(name: str) -> Optional[int]:
     """Return first matching city id."""
     params = {"term": name}
     try:
-        async with aiohttp.ClientSession() as session:
+        async with _session() as session:
             async with session.get(CITY_URL, params=params, timeout=30) as resp:
                 resp.raise_for_status()
                 data = await resp.json()
@@ -42,7 +50,7 @@ async def search_buses(origin: str, destination: str, date: str) -> List[Dict]:
         "date": date,
     }
     try:
-        async with aiohttp.ClientSession() as session:
+        async with _session() as session:
             async with session.get(SEARCH_URL, params=params, timeout=30) as resp:
                 resp.raise_for_status()
                 data = await resp.json()
@@ -63,7 +71,7 @@ async def link_has_routes(origin: str, destination: str, date: str) -> bool:
     """Return True if atlasbus page for given parameters is not 404."""
     url = build_routes_url(origin, destination, date)
     try:
-        async with aiohttp.ClientSession() as session:
+        async with _session() as session:
             async with session.get(url, allow_redirects=True, timeout=30) as resp:
                 return resp.status != 404
     except (asyncio.TimeoutError, aiohttp.ClientError) as e:

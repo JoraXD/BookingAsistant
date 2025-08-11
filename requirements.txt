@@ -6,3 +6,4 @@ aioresponses
 pytest-asyncio
 asyncpg
 fpdf2
+certifi
