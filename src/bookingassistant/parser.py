@@ -6,6 +6,7 @@ from typing import Dict, Optional
 
 import aiohttp
 import asyncio
+from pydantic import ValidationError
 
 from .gpt import (
     API_URL,
@@ -25,6 +26,7 @@ from .texts import (
     HISTORY_PROMPT,
 )
 from .config import YANDEX_IAM_TOKEN
+from .models import SlotsModel
 
 logger = logging.getLogger(__name__)
 
@@ -124,32 +126,40 @@ async def parse_slots(
             {"role": "user", "text": text},
         ],
     }
-    try:
-        async with create_session() as session:
-            async with session.post(
-                API_URL, headers=headers, json=payload, timeout=30
-            ) as response:
-                response.raise_for_status()
-                data = await response.json()
-                answer = (
-                    data.get("result", {})
-                    .get("alternatives", [{}])[0]
-                    .get("message", {})
-                    .get("text", "")
+    for attempt in range(2):
+        try:
+            async with create_session() as session:
+                async with session.post(
+                    API_URL, headers=headers, json=payload, timeout=30
+                ) as response:
+                    response.raise_for_status()
+                    data = await response.json()
+                    answer = (
+                        data.get("result", {})
+                        .get("alternatives", [{}])[0]
+                        .get("message", {})
+                        .get("text", "")
+                    )
+                    logger.info("Yandex response: %s", answer)
+                    model = SlotsModel.model_validate_json(_extract_json(answer))
+                    return model.model_dump(by_alias=True)
+        except (json.JSONDecodeError, ValidationError) as e:
+            logger.warning("Failed to parse slots: %s", e)
+            if attempt == 0:
+                payload["messages"].append(
+                    {
+                        "role": "user",
+                        "text": "верни строго JSON по схеме {'from': str, 'to': str, 'date': str, 'transport': 'bus|train|plane', 'confidence': float} без лишнего текста",
+                    }
                 )
-                logger.info("Yandex response: %s", answer)
-                slots = json.loads(_extract_json(answer))
-                return {
-                    "from": slots.get("origin") or slots.get("from"),
-                    "to": slots.get("destination") or slots.get("to"),
-                    "date": slots.get("date"),
-                    "transport": slots.get("transport"),
-                }
-    except (asyncio.TimeoutError, aiohttp.ClientError) as e:
-        logger.exception("Failed to parse slots: %s", e)
-    except Exception as e:
-        logger.exception("Failed to parse slots: %s", e)
-    return {"from": None, "to": None, "date": None, "transport": None}
+                continue
+        except (asyncio.TimeoutError, aiohttp.ClientError) as e:
+            logger.exception("Failed to parse slots: %s", e)
+            break
+        except Exception as e:  # pragma: no cover - unexpected
+            logger.exception("Failed to parse slots: %s", e)
+            break
+    return SlotsModel().model_dump(by_alias=True)
 
 
 async def complete_slots(
@@ -208,17 +218,15 @@ async def complete_slots(
                     .get("text", "")
                 )
                 logger.info("Yandex completion: %s", answer)
-                updated = json.loads(_extract_json(answer))
-
-                mapping = {
-                    "from": updated.get("origin") or updated.get("from"),
-                    "to": updated.get("destination") or updated.get("to"),
-                    "date": updated.get("date"),
-                    "transport": updated.get("transport"),
-                }
-                for key in missing:
-                    if mapping.get(key):
-                        result[key] = mapping[key]
+                try:
+                    updated = SlotsModel.model_validate_json(
+                        _extract_json(answer)
+                    ).model_dump(by_alias=True)
+                    for key in missing:
+                        if updated.get(key):
+                            result[key] = updated[key]
+                except (json.JSONDecodeError, ValidationError) as e:
+                    logger.warning("Failed to parse completion: %s", e)
     except (asyncio.TimeoutError, aiohttp.ClientError) as e:
         logger.exception("Failed to complete slots: %s", e)
     except Exception as e:

@@ -105,7 +105,8 @@ def _generate_ticket_pdf(trip: dict) -> bytes:
         10,
         f"Route: {trip['origin']} -> {trip['destination']}\nDate: {trip['date']}\nTransport: {trip['transport']}",
     )
-    return pdf.output(dest="S").encode("latin1")
+    data = pdf.output(dest="S")
+    return data if isinstance(data, (bytes, bytearray)) else data.encode("latin1")
 
 
 @dp.message(Command("confirm"))
