@@ -68,3 +68,55 @@ def display_transport(value: Optional[str]) -> str:
     if not value:
         return "не указан"
     return TRANSPORT_RU.get(value.lower(), value)
+
+
+def pre_extract_slots(text: str) -> dict:
+    """Extract basic slots from text using simple heuristics.
+
+    Attempts to determine transport type, origin, destination and date without
+    invoking the LLM. Only very naive patterns are used; if something cannot be
+    extracted it is returned as ``None``.
+    """
+
+    slots = {"from": None, "to": None, "date": None, "transport": None}
+
+    try:
+        from .parser import parse_transport
+    except Exception:  # pragma: no cover - import guard
+        parse_transport = None
+
+    if parse_transport:
+        slots["transport"] = parse_transport(text)
+
+    slots["date"] = normalize_date(text)
+    if not slots["date"]:
+        try:
+            from dateparser.search import search_dates
+
+            found = search_dates(text, languages=["ru"])
+            if found:
+                dt = found[0][1]
+                if dt.date() >= datetime.now().date():
+                    slots["date"] = dt.strftime("%Y-%m-%d")
+        except Exception:
+            pass
+
+    pattern = re.search(
+        r"\bиз\s+([A-ZА-ЯЁ][\w-]+)\b.*?\bв\s+([A-ZА-ЯЁ][\w-]+)\b",
+        text,
+        re.IGNORECASE,
+    )
+    if pattern:
+        slots["from"] = pattern.group(1)
+        slots["to"] = pattern.group(2)
+    else:
+        pattern = re.search(
+            r"\bв\s+([A-ZА-ЯЁ][\w-]+)\b.*?\bиз\s+([A-ZА-ЯЁ][\w-]+)\b",
+            text,
+            re.IGNORECASE,
+        )
+        if pattern:
+            slots["to"] = pattern.group(1)
+            slots["from"] = pattern.group(2)
+
+    return slots
