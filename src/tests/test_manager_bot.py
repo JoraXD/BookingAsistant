@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock
 
 import pytest
 from aiogram.types import Message, Chat, User
-import sys
 
 os.environ['TELEGRAM_BOT_TOKEN'] = '123:abc'
 os.environ['MANAGER_BOT_TOKEN'] = '456:def'
@@ -15,11 +14,10 @@ tmp = tempfile.NamedTemporaryFile(delete=False)
 os.environ['TRIPS_DB'] = tmp.name
 tmp.close()
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-import config
+import bookingassistant.config as config
 importlib.reload(config)
-import storage
-import manager_bot
+import bookingassistant.storage as storage
+import bookingassistant.manager_bot as manager_bot
 importlib.reload(storage)
 importlib.reload(manager_bot)
 

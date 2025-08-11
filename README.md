@@ -21,18 +21,19 @@ MANAGER_CHAT_ID=manager_chat_id
 2. Установите зависимости:
 
 ```bash
-pip install -r requirements.txt
+pip install -e .
 ```
 
 3. Запустите пользовательского бота:
 
 ```bash
-python main.py
+python -m bookingassistant.main
 ```
 
 4. Запустите бота менеджера (при необходимости):
+
 ```bash
-python manager_bot.py
+python -m bookingassistant.manager_bot
 ```
 
 ## Команды

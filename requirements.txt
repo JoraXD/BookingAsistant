@@ -1,9 +1,0 @@
-aiogram
-python-dotenv
-dateparser
-aiohttp
-aioresponses
-pytest-asyncio
-asyncpg
-fpdf2
-certifi

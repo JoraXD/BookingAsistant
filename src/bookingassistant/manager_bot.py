@@ -4,8 +4,8 @@ from aiogram.enums import ParseMode
 from aiogram.filters import Command
 from aiogram.types import Message, BufferedInputFile
 
-from config import MANAGER_BOT_TOKEN, TELEGRAM_BOT_TOKEN, PAYMENT_DETAILS
-from texts import (
+from .config import MANAGER_BOT_TOKEN, TELEGRAM_BOT_TOKEN, PAYMENT_DETAILS
+from .texts import (
     MANAGER_START_MESSAGE,
     MANAGER_BAD_ID_MESSAGE,
     MANAGER_TRIP_NOT_FOUND_MESSAGE,
@@ -21,7 +21,7 @@ from texts import (
     MANAGER_NO_TRIPS_MESSAGE,
     PDF_TICKET_TITLE,
 )
-import storage
+from . import storage
 from fpdf import FPDF
 
 if not MANAGER_BOT_TOKEN:

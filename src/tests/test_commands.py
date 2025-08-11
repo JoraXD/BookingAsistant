@@ -1,5 +1,4 @@
 import os
-import os
 import importlib
 import pytest
 
@@ -7,15 +6,11 @@ os.environ.setdefault('TELEGRAM_BOT_TOKEN', 'x')
 os.environ.setdefault('YANDEX_IAM_TOKEN', 'x')
 os.environ.setdefault('YANDEX_FOLDER_ID', 'x')
 
-import sys
-
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
 import aiohttp
 from aioresponses import aioresponses
 from yarl import URL
 
-import parser
+import bookingassistant.parser as parser
 importlib.reload(parser)
 
 

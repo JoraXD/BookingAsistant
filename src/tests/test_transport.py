@@ -1,21 +1,18 @@
 
 import os
-import sys
 
 import aiohttp
 import pytest
 from aioresponses import aioresponses
 from yarl import URL
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
 os.environ.setdefault('TELEGRAM_BOT_TOKEN', 'x')
 os.environ.setdefault('YANDEX_IAM_TOKEN', 'x')
 os.environ.setdefault('YANDEX_FOLDER_ID', 'x')
 
-import parser
-from parser import parse_transport
-from utils import display_transport
+import bookingassistant.parser as parser
+from bookingassistant.parser import parse_transport
+from bookingassistant.utils import display_transport
 
 
 def test_plane():

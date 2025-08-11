@@ -1,7 +1,6 @@
 import os
 import importlib
 import tempfile
-import sys
 
 os.environ['TELEGRAM_BOT_TOKEN'] = os.environ.get('TELEGRAM_BOT_TOKEN', '123:abc')
 os.environ['YANDEX_IAM_TOKEN'] = os.environ.get('YANDEX_IAM_TOKEN', 'x')
@@ -11,8 +10,7 @@ tmp = tempfile.NamedTemporaryFile(delete=False)
 os.environ['TRIPS_DB'] = tmp.name
 tmp.close()
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-import storage
+import bookingassistant.storage as storage
 importlib.reload(storage)
 
 storage.init_db()

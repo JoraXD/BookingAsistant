@@ -1,9 +1,9 @@
+import asyncio
 import logging
-from typing import List, Dict, Optional
+import ssl
+from typing import Dict, List, Optional
 
 import aiohttp
-import asyncio
-import ssl
 import certifi
 
 SEARCH_URL = "https://atlasbus.ru/api/rasp/v3/routes/search"

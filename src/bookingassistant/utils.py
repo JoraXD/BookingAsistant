@@ -1,13 +1,13 @@
+import logging
+import re
 from datetime import datetime, timedelta
 from typing import Optional
 
-import re
-import logging
-
 import dateparser
-from parser import build_prompt, _generate_text
-from texts import TIME_PROMPT
-from maps import DAYS_MAP, TRANSPORT_RU
+
+from .gpt import build_prompt, generate_text
+from .maps import DAYS_MAP, TRANSPORT_RU
+from .texts import TIME_PROMPT
 
 
 def next_weekday(target_word: str) -> str:
@@ -47,7 +47,7 @@ async def normalize_time(text: str) -> Optional[str]:
     """Получает время через YandexGPT и возвращает HH:MM или None."""
     prompt = build_prompt(TIME_PROMPT.format(text=text))
     try:
-        result = await _generate_text(prompt)
+        result = await generate_text(prompt)
     except Exception as e:
         logging.exception("Failed to parse time via GPT: %s", e)
         result = ''
