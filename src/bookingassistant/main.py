@@ -8,8 +8,8 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.types import Message
 
-from config import TELEGRAM_BOT_TOKEN, MANAGER_BOT_TOKEN, MANAGER_CHAT_ID
-from texts import (
+from .config import TELEGRAM_BOT_TOKEN, MANAGER_BOT_TOKEN, MANAGER_CHAT_ID
+from .texts import (
     DEFAULT_QUESTIONS,
     EXTRA_QUESTIONS,
     DEFAULT_FALLBACK,
@@ -27,7 +27,7 @@ from texts import (
     ROUTES_NOT_FOUND_MESSAGE,
     REQUEST_SENT_MESSAGE,
 )
-from parser import (
+from .parser import (
     complete_slots,
     parse_history_request,
     generate_question,
@@ -35,12 +35,12 @@ from parser import (
     generate_fallback,
     parse_yes_no,
 )
-from atlas import build_routes_url, link_has_routes
+from .atlas import build_routes_url, link_has_routes
 
-from slot_editor import update_slots
-from utils import display_transport, normalize_time
-from storage import save_trip, get_last_trips, cancel_trip
-from state_storage import (
+from .slot_editor import update_slots
+from .utils import display_transport, normalize_time
+from .storage import save_trip, get_last_trips, cancel_trip
+from .state_storage import (
     get_user_state,
     set_user_state,
     clear_user_state,

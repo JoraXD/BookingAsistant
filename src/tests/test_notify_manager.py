@@ -1,5 +1,4 @@
 import os
-import sys
 import importlib
 from unittest.mock import AsyncMock
 import json
@@ -11,11 +10,9 @@ os.environ['TELEGRAM_BOT_TOKEN'] = '123:abc'
 os.environ['MANAGER_BOT_TOKEN'] = '456:def'
 os.environ['MANAGER_CHAT_ID'] = '789'
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
-import config
+import bookingassistant.config as config
 importlib.reload(config)
-import main
+import bookingassistant.main as main
 importlib.reload(main)
 
 @pytest.mark.asyncio

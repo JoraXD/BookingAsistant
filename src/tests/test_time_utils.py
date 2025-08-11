@@ -1,5 +1,4 @@
 import os
-import sys
 
 import pytest
 from aioresponses import aioresponses
@@ -8,10 +7,8 @@ os.environ.setdefault('TELEGRAM_BOT_TOKEN', 'x')
 os.environ.setdefault('YANDEX_IAM_TOKEN', 'x')
 os.environ.setdefault('YANDEX_FOLDER_ID', 'x')
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
-from utils import normalize_time
-from parser import API_URL
+from bookingassistant.utils import normalize_time
+from bookingassistant.parser import API_URL
 
 
 @pytest.mark.asyncio

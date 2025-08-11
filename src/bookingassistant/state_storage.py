@@ -1,11 +1,8 @@
-import os
 import json
-import logging
+import os
 from typing import Any, Optional
 
 import asyncpg
-
-logger = logging.getLogger(__name__)
 
 
 class StateStorageError(Exception):

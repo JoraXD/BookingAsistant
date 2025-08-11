@@ -1,8 +1,8 @@
 import logging
 from typing import Dict, Optional
 
-from parser import parse_slots
-from utils import normalize_date
+from .parser import parse_slots
+from .utils import normalize_date
 
 logger = logging.getLogger(__name__)
 
