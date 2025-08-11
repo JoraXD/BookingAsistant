@@ -12,6 +12,7 @@ async def update_slots(
     message: str,
     session_data: Dict[int, Dict[str, Optional[str]]],
     question: Optional[str] = None,
+    pre_slots: Optional[Dict[str, Optional[str]]] = None,
 ) -> tuple[Dict[str, Optional[str]], Dict[str, str]]:
     """Update saved slots for a user based on correction message.
 
@@ -49,7 +50,10 @@ async def update_slots(
 
     logger.info("Editing slots for %s: %s", user_id, message)
 
-    parsed = await parse_slots(message, question)
+    if pre_slots is not None:
+        parsed = dict(pre_slots)
+    else:
+        parsed = await parse_slots(message, question)
     user_date = normalize_date(message)
     if user_date:
         parsed["date"] = user_date

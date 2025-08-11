@@ -40,7 +40,7 @@ from .parser import (
 from .atlas import build_routes_url, link_has_routes
 
 from .slot_editor import update_slots
-from .utils import display_transport, normalize_time
+from .utils import display_transport, normalize_time, pre_extract_slots
 from .storage import save_trip, get_last_trips, cancel_trip
 from .state_storage import (
     get_user_state,
@@ -129,8 +129,17 @@ async def handle_slots(
             return
     question = state.pop("last_question", None)
 
+    pre_slots = pre_extract_slots(text)
+    filled = {k: v for k, v in pre_slots.items() if v}
+    conflict = any(state.get(k) and state[k] != v for k, v in filled.items())
+
     session_data = {uid: state}
-    slots, changed = await update_slots(uid, text, session_data, question)
+    if not conflict and len(filled) >= 3:
+        slots, changed = await update_slots(
+            uid, text, session_data, question, pre_slots=pre_slots
+        )
+    else:
+        slots, changed = await update_slots(uid, text, session_data, question)
 
     missing_before = get_missing_slots(slots)
     if missing_before:
