@@ -12,7 +12,7 @@ class StateStorageError(Exception):
     """Raised when state storage operation fails."""
     pass
 
-DATABASE_URL = os.getenv('STATE_DB_URL', 'postgresql://postgres:postgres@localhost:5432/state_test')
+DATABASE_URL = os.getenv('STATE_DB_URL', 'postgresql://postgres:postgres@localhost:5543/template1')
 _pool: Optional[asyncpg.Pool] = None
 
 
