@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock
 import pytest
 from aiogram.types import Message, Chat, User
 import sys
+import json
 
 os.environ['TELEGRAM_BOT_TOKEN'] = '123:abc'
 os.environ['MANAGER_BOT_TOKEN'] = '456:def'
@@ -93,3 +94,19 @@ async def test_list_command():
     assert 'pending' in text
 
     os.unlink(os.environ['TRIPS_DB'])
+
+
+def test_generate_ticket_pdf_with_passenger_info():
+    trip = {
+        'origin': 'A',
+        'destination': 'B',
+        'date': '2025-01-01',
+        'transport': 'bus',
+        'contact': json.dumps([
+            {'fio': 'Ivan Ivanovich Petrov', 'phone': '+123'},
+            {'fio': 'Petr Petrovich Ivanov', 'phone': '+456'},
+        ]),
+    }
+    pdf_bytes = manager_bot._generate_ticket_pdf(trip)
+    assert b'Ivan Ivanovich Petrov' in pdf_bytes
+    assert b'+456' in pdf_bytes

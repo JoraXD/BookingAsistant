@@ -7,6 +7,7 @@ from aiogram.types import Message, BufferedInputFile
 from config import MANAGER_BOT_TOKEN, TELEGRAM_BOT_TOKEN, PAYMENT_DETAILS
 import storage
 from fpdf import FPDF
+import json
 
 if not MANAGER_BOT_TOKEN:
     raise RuntimeError("MANAGER_BOT_TOKEN is not set")
@@ -67,16 +68,32 @@ async def cmd_price(message: Message):
 
 def _generate_ticket_pdf(trip: dict) -> bytes:
     pdf = FPDF()
+    pdf.set_compression(False)
     pdf.add_page()
     pdf.set_font('Helvetica', size=14)
-    pdf.cell(0, 10, text='Ticket', new_x='LMARGIN', new_y='NEXT', align='C')
+    pdf.cell(0, 10, 'Ticket', new_x='LMARGIN', new_y='NEXT', align='C')
     pdf.ln(10)
     pdf.set_font('Helvetica', size=12)
-    pdf.multi_cell(
-        0,
-        10,
-        text=f"Route: {trip['origin']} -> {trip['destination']}\nDate: {trip['date']}\nTransport: {trip['transport']}"
+    info = (
+        f"Route: {trip['origin']} -> {trip['destination']}\n"
+        f"Date: {trip['date']}\n"
+        f"Transport: {trip['transport']}"
     )
+    contact = trip.get('contact')
+    if contact:
+        try:
+            passengers = json.loads(contact)
+        except Exception:
+            passengers = None
+        if isinstance(passengers, list):
+            info += "\nPassengers:"
+            for p in passengers:
+                name = p.get('fio') or p.get('name', '')
+                phone = p.get('phone', '')
+                info += f"\n- {name}: {phone}"
+        else:
+            info += f"\nContact: {contact}"
+    pdf.multi_cell(0, 10, info)
     return bytes(pdf.output(dest='S'))
 
 

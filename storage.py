@@ -17,6 +17,7 @@ def init_db():
             destination TEXT,
             date TEXT,
             transport TEXT,
+            contact TEXT,
             status TEXT DEFAULT 'pending'
         )
         """
@@ -30,6 +31,8 @@ def init_db():
         # migrate old status values if present
         cur.execute("UPDATE trips SET status='pending' WHERE status='active'")
         cur.execute("UPDATE trips SET status='rejected' WHERE status='cancelled'")
+    if 'contact' not in columns:
+        cur.execute("ALTER TABLE trips ADD COLUMN contact TEXT")
     conn.commit()
     conn.close()
 
@@ -44,13 +47,14 @@ def save_trip(data: Dict) -> int:
     conn = _get_conn()
     with conn:
         cur = conn.execute(
-            "INSERT INTO trips (user_id, origin, destination, date, transport, status) VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO trips (user_id, origin, destination, date, transport, contact, status) VALUES (?, ?, ?, ?, ?, ?, ?)",
             (
                 data.get('user_id'),
                 data.get('origin'),
                 data.get('destination'),
                 data.get('date'),
                 data.get('transport'),
+                data.get('contact'),
                 data.get('status', 'pending'),
             ),
         )
@@ -61,7 +65,7 @@ def save_trip(data: Dict) -> int:
 def get_last_trips(user_id: int, limit: int = 5) -> List[Dict]:
     conn = _get_conn()
     cur = conn.execute(
-        "SELECT id, user_id, origin, destination, date, transport, status FROM trips WHERE user_id=? ORDER BY id DESC LIMIT ?",
+        "SELECT id, user_id, origin, destination, date, transport, contact, status FROM trips WHERE user_id=? ORDER BY id DESC LIMIT ?",
         (user_id, limit),
     )
     rows = [dict(row) for row in cur.fetchall()]
@@ -92,7 +96,7 @@ def update_trip_status(trip_id: int, status: str) -> bool:
 def get_trips_by_status(status: str) -> List[Dict]:
     conn = _get_conn()
     cur = conn.execute(
-        "SELECT id, user_id, origin, destination, date, transport, status FROM trips WHERE status=? ORDER BY id",
+        "SELECT id, user_id, origin, destination, date, transport, contact, status FROM trips WHERE status=? ORDER BY id",
         (status,),
     )
     rows = [dict(row) for row in cur.fetchall()]
@@ -103,7 +107,7 @@ def get_trips_by_status(status: str) -> List[Dict]:
 def get_trip(trip_id: int) -> Dict | None:
     conn = _get_conn()
     cur = conn.execute(
-        "SELECT id, user_id, origin, destination, date, transport, status FROM trips WHERE id=?",
+        "SELECT id, user_id, origin, destination, date, transport, contact, status FROM trips WHERE id=?",
         (trip_id,),
     )
     row = cur.fetchone()
