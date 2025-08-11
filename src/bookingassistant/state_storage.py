@@ -7,9 +7,13 @@ import asyncpg
 
 class StateStorageError(Exception):
     """Raised when state storage operation fails."""
+
     pass
 
-DATABASE_URL = os.getenv('STATE_DB_URL', 'postgresql://postgres:postgres@localhost:5543/template1')
+
+DATABASE_URL = os.getenv(
+    "STATE_DB_URL", "postgresql://postgres:postgres@localhost:5543/template1"
+)
 _pool: Optional[asyncpg.Pool] = None
 
 
@@ -33,8 +37,12 @@ async def get_user_state(user_id: int) -> Optional[dict[str, Any]]:
     try:
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            row = await conn.fetchrow('SELECT state FROM user_state WHERE user_id=$1', user_id)
-            return json.loads(row['state']) if row and row['state'] is not None else None
+            row = await conn.fetchrow(
+                "SELECT state FROM user_state WHERE user_id=$1", user_id
+            )
+            return (
+                json.loads(row["state"]) if row and row["state"] is not None else None
+            )
     except Exception as e:
         raise StateStorageError(str(e)) from e
 
@@ -61,6 +69,6 @@ async def clear_user_state(user_id: int) -> None:
     try:
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            await conn.execute('DELETE FROM user_state WHERE user_id=$1', user_id)
+            await conn.execute("DELETE FROM user_state WHERE user_id=$1", user_id)
     except Exception as e:
         raise StateStorageError(str(e)) from e

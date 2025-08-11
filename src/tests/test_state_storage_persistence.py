@@ -15,5 +15,6 @@ async def test_state_persistence():
     assert await state_storage.get_user_state(uid) == {"foo": "bar"}
     importlib.reload(state_storage)
     from bookingassistant.state_storage import get_user_state, clear_user_state
+
     assert await get_user_state(uid) == {"foo": "bar"}
     await clear_user_state(uid)
