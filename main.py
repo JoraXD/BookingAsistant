@@ -20,7 +20,7 @@ from parser import (
 from atlas import build_routes_url, link_has_routes
 
 from slot_editor import update_slots
-from utils import display_transport
+from utils import display_transport, normalize_time
 from storage import save_trip, get_last_trips, cancel_trip
 from state_storage import (
     get_user_state,
@@ -76,13 +76,13 @@ def get_missing_slots(slots: Dict[str, Optional[str]]):
     return [key for key in REQUIRED_SLOTS if not slots.get(key)]
 
 
-async def notify_manager(slots: Dict[str, Optional[str]], user: types.User):
+async def notify_manager(trip_id: int, slots: Dict[str, Optional[str]], user: types.User):
     """Send booking info to manager bot if configured."""
     if not manager_bot or not MANAGER_CHAT_ID:
         return
     username = user.username or f"id{user.id}"
     text = (
-        f"Новое бронирование от @{username}:\n"
+        f"Заявка №{trip_id} от @{username}:\n"
         f"```\n{json.dumps(slots, ensure_ascii=False, indent=2)}\n```"
     )
     try:
@@ -240,7 +240,12 @@ async def handle_message(message: Message):
     if state.get('extra_questions'):
         questions = state['extra_questions']
         key = questions.pop(0)
-        state[key] = message.text
+        answer = message.text
+        if key == 'time':
+            parsed = await normalize_time(answer)
+            state[key] = parsed if parsed else answer
+        else:
+            state[key] = answer
         try:
             await set_user_state(uid, state)
         except StateStorageError as e:
@@ -278,8 +283,7 @@ async def handle_message(message: Message):
                     await message.answer(url)
                 else:
                     await message.answer('Рейсы не найдены.')
-            await notify_manager(slots, message.from_user)
-            save_trip({
+            trip_id = save_trip({
                 'user_id': uid,
                 'origin': slots['from'],
                 'destination': slots['to'],
@@ -287,6 +291,7 @@ async def handle_message(message: Message):
                 'transport': slots['transport'],
                 'status': 'pending',
             })
+            await notify_manager(trip_id, slots, message.from_user)
             response = {
                 "message": "Отправили заявку менеджеру, скоро с вами свяжутся!",
             }
@@ -302,8 +307,7 @@ async def handle_message(message: Message):
                 logger.exception("Failed to clear state: %s", e)
                 await message.answer('Сервис временно недоступен, попробуйте позже.')
                 return
-            await notify_manager(slots, message.from_user)
-            save_trip({
+            trip_id = save_trip({
                 'user_id': uid,
                 'origin': slots['from'],
                 'destination': slots['to'],
@@ -311,6 +315,7 @@ async def handle_message(message: Message):
                 'transport': slots['transport'],
                 'status': 'pending',
             })
+            await notify_manager(trip_id, slots, message.from_user)
             response = {
                 "message": "Отправили заявку менеджеру, скоро с вами свяжутся!",
             }

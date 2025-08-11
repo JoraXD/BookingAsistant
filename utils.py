@@ -2,8 +2,10 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 import re
+import logging
 
 import dateparser
+from parser import build_prompt, _generate_text
 
 # Словарь соответствий дней недели
 DAYS_MAP = {
@@ -47,6 +49,35 @@ def normalize_date(text: str) -> Optional[str]:
     if dt.date() < datetime.now().date():
         return None
     return dt.strftime('%Y-%m-%d')
+
+
+# Промпт для получения времени через YandexGPT
+TIME_PROMPT = (
+    'Определи время из текста: "{text}". '
+    'Верни только время в формате HH:MM (24-часовой). '
+    'Если распознать не удаётся, верни пустую строку.'
+)
+
+
+async def normalize_time(text: str) -> Optional[str]:
+    """Получает время через YandexGPT и возвращает HH:MM или None."""
+    prompt = build_prompt(TIME_PROMPT.format(text=text))
+    try:
+        result = await _generate_text(prompt)
+    except Exception as e:
+        logging.exception("Failed to parse time via GPT: %s", e)
+        result = ''
+
+    # Попытка извлечь время из ответа модели
+    match = re.search(r'(\d{1,2})(?:[:.](\d{1,2}))?', result)
+    if not match:
+        # в крайнем случае попробуем извлечь из исходного текста
+        match = re.search(r'(\d{1,2})(?:[:.](\d{1,2}))?', text)
+    if not match:
+        return None
+    hour = int(match.group(1))
+    minute = int(match.group(2) or 0)
+    return f"{hour:02d}:{minute:02d}"
 
 
 # Mapping of internal transport codes to Russian labels
