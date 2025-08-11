@@ -81,10 +81,8 @@ async def notify_manager(trip_id: int, slots: Dict[str, Optional[str]], user: ty
     if not manager_bot or not MANAGER_CHAT_ID:
         return
     username = user.username or f"id{user.id}"
-    text = (
-        f"Заявка №{trip_id} от @{username}:\n"
-        f"```\n{json.dumps(slots, ensure_ascii=False, indent=2)}\n```"
-    )
+    payload = {"id": trip_id, "user": f"@{username}", **slots}
+    text = json.dumps(payload, ensure_ascii=False, indent=2)
     try:
         await manager_bot.send_message(int(MANAGER_CHAT_ID), text)
     except Exception as e:
@@ -293,7 +291,7 @@ async def handle_message(message: Message):
             })
             await notify_manager(trip_id, slots, message.from_user)
             response = {
-                "message": "Отправили заявку менеджеру, скоро с вами свяжутся!",
+                "message": "Отправили заявку менеджеру",
             }
             await message.answer(
                 f"\n```\n{json.dumps(response, ensure_ascii=False, indent=2)}\n```"
@@ -317,7 +315,7 @@ async def handle_message(message: Message):
             })
             await notify_manager(trip_id, slots, message.from_user)
             response = {
-                "message": "Отправили заявку менеджеру, скоро с вами свяжутся!",
+                "message": "Отправили заявку менеджеру",
             }
             await message.answer(
                 f"\n```\n{json.dumps(response, ensure_ascii=False, indent=2)}\n```"
