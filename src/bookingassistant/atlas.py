@@ -1,3 +1,5 @@
+"""Работа с сервисом atlasbus.ru для поиска автобусных маршрутов."""
+
 import asyncio
 import logging
 import ssl
@@ -17,7 +19,7 @@ def _session() -> aiohttp.ClientSession:
 
 
 async def search_city_id(name: str) -> Optional[int]:
-    """Return first matching city id."""
+    """Найти ID города по его названию."""
     params = {"term": name}
     try:
         async with _session() as session:
@@ -34,9 +36,8 @@ async def search_city_id(name: str) -> Optional[int]:
     return None
 
 
-
 async def search_buses(origin: str, destination: str, date: str) -> List[Dict]:
-    """Return list of bus routes from atlasbus.ru."""
+    """Вернуть список автобусных рейсов с сайта atlasbus.ru."""
     origin_id = await search_city_id(origin)
     destination_id = await search_city_id(destination)
     if origin_id is None or destination_id is None:
@@ -46,7 +47,6 @@ async def search_buses(origin: str, destination: str, date: str) -> List[Dict]:
     params = {
         "fromCity": origin_id,
         "toCity": destination_id,
-
         "date": date,
     }
     try:
@@ -63,12 +63,12 @@ async def search_buses(origin: str, destination: str, date: str) -> List[Dict]:
 
 
 def build_routes_url(origin: str, destination: str, date: str) -> str:
-    """Return URL to atlasbus with pre-filled route search."""
+    """Построить ссылку на atlasbus с заранее заполненным поиском."""
     return f"https://atlasbus.ru/Маршруты/{origin}/{destination}?date={date}"
 
 
 async def link_has_routes(origin: str, destination: str, date: str) -> bool:
-    """Return True if atlasbus page for given parameters is not 404."""
+    """Проверить, существует ли страница с маршрутами на atlasbus."""
     url = build_routes_url(origin, destination, date)
     try:
         async with _session() as session:

@@ -40,10 +40,10 @@ async def update_slots(
     slots = session_data.get(
         user_id,
         {
-            'from': None,
-            'to': None,
-            'date': None,
-            'transport': None,
+            "from": None,
+            "to": None,
+            "date": None,
+            "transport": None,
         },
     )
 
@@ -52,12 +52,12 @@ async def update_slots(
     parsed = await parse_slots(message, question)
     user_date = normalize_date(message)
     if user_date:
-        parsed['date'] = user_date
-    elif parsed.get('date'):
-        parsed['date'] = normalize_date(parsed['date']) or parsed['date']
+        parsed["date"] = user_date
+    elif parsed.get("date"):
+        parsed["date"] = normalize_date(parsed["date"]) or parsed["date"]
 
     changed = {}
-    for key in ['from', 'to', 'date', 'transport']:
+    for key in ["from", "to", "date", "transport"]:
         value = parsed.get(key)
         if value:
             # If slot already had some value and user provided a new one,

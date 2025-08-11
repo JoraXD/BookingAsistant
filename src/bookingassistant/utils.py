@@ -33,14 +33,13 @@ def normalize_date(text: str) -> Optional[str]:
             if date_str:
                 return date_str
 
-    dt = dateparser.parse(text, languages=['ru'])
+    dt = dateparser.parse(text, languages=["ru"])
     if not dt:
         return None
     dt = dt.replace(tzinfo=None)
     if dt.date() < datetime.now().date():
         return None
-    return dt.strftime('%Y-%m-%d')
-
+    return dt.strftime("%Y-%m-%d")
 
 
 async def normalize_time(text: str) -> Optional[str]:
@@ -50,13 +49,13 @@ async def normalize_time(text: str) -> Optional[str]:
         result = await generate_text(prompt)
     except Exception as e:
         logging.exception("Failed to parse time via GPT: %s", e)
-        result = ''
+        result = ""
 
     # Попытка извлечь время из ответа модели
-    match = re.search(r'(\d{1,2})(?:[:.](\d{1,2}))?', result)
+    match = re.search(r"(\d{1,2})(?:[:.](\d{1,2}))?", result)
     if not match:
         # в крайнем случае попробуем извлечь из исходного текста
-        match = re.search(r'(\d{1,2})(?:[:.](\d{1,2}))?', text)
+        match = re.search(r"(\d{1,2})(?:[:.](\d{1,2}))?", text)
     if not match:
         return None
     hour = int(match.group(1))
@@ -64,10 +63,8 @@ async def normalize_time(text: str) -> Optional[str]:
     return f"{hour:02d}:{minute:02d}"
 
 
-
-
 def display_transport(value: Optional[str]) -> str:
     """Return Russian name for a transport code."""
     if not value:
-        return 'не указан'
+        return "не указан"
     return TRANSPORT_RU.get(value.lower(), value)
