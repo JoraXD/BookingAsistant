@@ -6,17 +6,8 @@ import logging
 
 import dateparser
 from parser import build_prompt, _generate_text
-
-# Словарь соответствий дней недели
-DAYS_MAP = {
-    "понедельник": 0, "пн": 0, "пон": 0,
-    "вторник": 1, "вт": 1, "втр": 1,
-    "среда": 2, "ср": 2,
-    "четверг": 3, "чт": 3, "чет": 3,
-    "пятница": 4, "пт": 4, "пятн": 4,
-    "суббота": 5, "сб": 5, "суб": 5,
-    "воскресенье": 6, "вс": 6, "воскр": 6,
-}
+from texts import TIME_PROMPT
+from maps import DAYS_MAP, TRANSPORT_RU
 
 
 def next_weekday(target_word: str) -> str:
@@ -51,13 +42,6 @@ def normalize_date(text: str) -> Optional[str]:
     return dt.strftime('%Y-%m-%d')
 
 
-# Промпт для получения времени через YandexGPT
-TIME_PROMPT = (
-    'Определи время из текста: "{text}". '
-    'Верни только время в формате HH:MM (24-часовой). '
-    'Если распознать не удаётся, верни пустую строку.'
-)
-
 
 async def normalize_time(text: str) -> Optional[str]:
     """Получает время через YandexGPT и возвращает HH:MM или None."""
@@ -80,12 +64,6 @@ async def normalize_time(text: str) -> Optional[str]:
     return f"{hour:02d}:{minute:02d}"
 
 
-# Mapping of internal transport codes to Russian labels
-TRANSPORT_RU = {
-    'bus': 'автобус',
-    'train': 'поезд',
-    'plane': 'самолет',
-}
 
 
 def display_transport(value: Optional[str]) -> str:
@@ -93,4 +71,3 @@ def display_transport(value: Optional[str]) -> str:
     if not value:
         return 'не указан'
     return TRANSPORT_RU.get(value.lower(), value)
-

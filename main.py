@@ -9,6 +9,24 @@ from aiogram.filters import Command
 from aiogram.types import Message
 
 from config import TELEGRAM_BOT_TOKEN, MANAGER_BOT_TOKEN, MANAGER_CHAT_ID
+from texts import (
+    DEFAULT_QUESTIONS,
+    EXTRA_QUESTIONS,
+    DEFAULT_FALLBACK,
+    FIELD_NAMES,
+    GREETING_MESSAGE,
+    HELP_MESSAGE,
+    CANCEL_MESSAGE,
+    SERVICE_ERROR_MESSAGE,
+    NO_TRIPS_MESSAGE,
+    TRIP_CANCELLED_TEMPLATE,
+    TRIP_NOT_FOUND_MESSAGE,
+    ASK_SEARCH_MESSAGE,
+    YESNO_PROMPT_USER,
+    BOOKING_CANCELLED_MESSAGE,
+    ROUTES_NOT_FOUND_MESSAGE,
+    REQUEST_SENT_MESSAGE,
+)
 from parser import (
     complete_slots,
     parse_history_request,
@@ -39,34 +57,6 @@ manager_bot = Bot(token=MANAGER_BOT_TOKEN) if MANAGER_BOT_TOKEN else None
 # Последнее время активности пользователя
 last_seen: Dict[int, datetime] = {}
 
-# Вопросы по умолчанию, если генерация через GPT не сработала
-DEFAULT_QUESTIONS = {
-    'from': 'Не подскажете, из какого города выезжаем? 🙂',
-    'to': 'Отлично, осталось уточнить пункт назначения 😉',
-    'date': 'Хорошо, а дату поездки помните?',
-    'transport': 'Какой транспорт предпочтёте: автобус, поезд или самолёт?'
-}
-
-# Дополнительные уточняющие вопросы после подтверждения бронирования
-EXTRA_QUESTIONS = {
-    'time': 'Во сколько примерно хотите вылететь?',
-    'baggage': 'Нужен ли дополнительный багаж?',
-    'passengers': 'Сколько пассажиров поедет?'
-}
-
-# Ответ по умолчанию, если не удалось распознать сообщение
-DEFAULT_FALLBACK = (
-    'Кажется, что-то пропустил… Можете повторить, пожалуйста?'
-)
-
-# Названия слотов для сообщений об изменениях
-FIELD_NAMES = {
-    'from': 'город отправления',
-    'to': 'город назначения',
-    'date': 'дату',
-    'transport': 'транспорт',
-}
-
 
 # Слоты, необходимые для первоначального запроса
 REQUIRED_SLOTS = ['from', 'to', 'date', 'transport']
@@ -94,9 +84,7 @@ async def greet_if_needed(message: Message):
     now = datetime.now(timezone.utc)
     last = last_seen.get(uid)
     if not last or now - last > timedelta(hours=2):
-        await message.answer(
-            'Привет! Я помогу забронировать поездку. Расскажите, куда и когда хотите ехать 😄'
-        )
+        await message.answer(GREETING_MESSAGE)
     last_seen[uid] = now
 
 
@@ -108,12 +96,7 @@ async def cmd_start(message: Message):
 @dp.message(Command('help', 'info'))
 async def cmd_help(message: Message):
     await greet_if_needed(message)
-    await message.answer(
-        'Отправьте сообщение, например: "Хочу завтра в Москву на поезде".\n'
-        'Доступные команды:\n'
-        '/start - начать заново\n'
-        '/cancel - сбросить сессию'
-    )
+    await message.answer(HELP_MESSAGE)
 
 
 @dp.message(Command('cancel'))
@@ -123,9 +106,9 @@ async def cmd_cancel(message: Message):
         await clear_user_state(message.from_user.id)
     except StateStorageError as e:
         logger.exception("Failed to clear state: %s", e)
-        await message.answer('Сервис временно недоступен, попробуйте позже.')
+        await message.answer(SERVICE_ERROR_MESSAGE)
         return
-    await message.answer('Хорошо, начинаем заново. Расскажите ещё раз о поездке!')
+    await message.answer(CANCEL_MESSAGE)
 
 
 async def handle_slots(message: Message, state: Optional[Dict[str, Optional[str]]] = None):
@@ -136,7 +119,7 @@ async def handle_slots(message: Message, state: Optional[Dict[str, Optional[str]
             state = await get_user_state(uid) or {}
         except StateStorageError as e:
             logger.exception("Failed to load state: %s", e)
-            await message.answer('Сервис временно недоступен, попробуйте позже.')
+            await message.answer(SERVICE_ERROR_MESSAGE)
             return
     question = state.pop('last_question', None)
 
@@ -155,7 +138,7 @@ async def handle_slots(message: Message, state: Optional[Dict[str, Optional[str]
         await set_user_state(uid, state)
     except StateStorageError as e:
         logger.exception("Failed to save state: %s", e)
-        await message.answer('Сервис временно недоступен, попробуйте позже.')
+        await message.answer(SERVICE_ERROR_MESSAGE)
         return
     missing = get_missing_slots(slots)
 
@@ -204,7 +187,7 @@ async def handle_message(message: Message):
         state = await get_user_state(uid) or {}
     except StateStorageError as e:
         logger.exception("Failed to load state: %s", e)
-        await message.answer('Сервис временно недоступен, попробуйте позже.')
+        await message.answer(SERVICE_ERROR_MESSAGE)
         return
     action = await parse_history_request(message.text)
 
@@ -212,7 +195,7 @@ async def handle_message(message: Message):
         limit = int(action.get('limit', 5))
         trips = get_last_trips(uid, limit=limit)
         if not trips:
-            await message.answer('У вас нет поездок.')
+            await message.answer(NO_TRIPS_MESSAGE)
         else:
             lines = [
                 f"{t['id']}: {t['origin']} → {t['destination']} {t['date']} "
@@ -230,10 +213,10 @@ async def handle_message(message: Message):
                 if t['destination'].lower() == dest and t['status'] == 'active':
                     cancel_trip(t['id'])
                     await message.answer(
-                        f"Поездка в {t['destination']} отменена."
+                        TRIP_CANCELLED_TEMPLATE.format(destination=t['destination'])
                     )
                     return
-        await message.answer('Поездка не найдена.')
+        await message.answer(TRIP_NOT_FOUND_MESSAGE)
         return
     if state.get('extra_questions'):
         questions = state['extra_questions']
@@ -248,7 +231,7 @@ async def handle_message(message: Message):
             await set_user_state(uid, state)
         except StateStorageError as e:
             logger.exception("Failed to save state: %s", e)
-            await message.answer('Сервис временно недоступен, попробуйте позже.')
+            await message.answer(SERVICE_ERROR_MESSAGE)
             return
         if questions:
             next_key = questions[0]
@@ -260,9 +243,9 @@ async def handle_message(message: Message):
                 await set_user_state(uid, state)
             except StateStorageError as e:
                 logger.exception("Failed to save state: %s", e)
-                await message.answer('Сервис временно недоступен, попробуйте позже.')
+                await message.answer(SERVICE_ERROR_MESSAGE)
                 return
-            await message.answer('Хотите, я поищу билеты?')
+            await message.answer(ASK_SEARCH_MESSAGE)
         return
     if state.get('await_search'):
         choice = await parse_yes_no(message.text)
@@ -273,14 +256,14 @@ async def handle_message(message: Message):
                 await clear_user_state(uid)
             except StateStorageError as e:
                 logger.exception("Failed to clear state: %s", e)
-                await message.answer('Сервис временно недоступен, попробуйте позже.')
+                await message.answer(SERVICE_ERROR_MESSAGE)
                 return
             if slots.get('transport', '').lower() in {'автобус', 'bus', 'автобусы'}:
                 url = build_routes_url(slots['from'], slots['to'], slots['date'])
                 if await link_has_routes(slots['from'], slots['to'], slots['date']):
                     await message.answer(url)
                 else:
-                    await message.answer('Рейсы не найдены.')
+                    await message.answer(ROUTES_NOT_FOUND_MESSAGE)
             trip_id = save_trip({
                 'user_id': uid,
                 'origin': slots['from'],
@@ -291,7 +274,7 @@ async def handle_message(message: Message):
             })
             await notify_manager(trip_id, slots, message.from_user)
             response = {
-                "message": "Отправили заявку менеджеру",
+                "message": REQUEST_SENT_MESSAGE,
             }
             await message.answer(
                 f"\n```\n{json.dumps(response, ensure_ascii=False, indent=2)}\n```"
@@ -303,7 +286,7 @@ async def handle_message(message: Message):
                 await clear_user_state(uid)
             except StateStorageError as e:
                 logger.exception("Failed to clear state: %s", e)
-                await message.answer('Сервис временно недоступен, попробуйте позже.')
+                await message.answer(SERVICE_ERROR_MESSAGE)
                 return
             trip_id = save_trip({
                 'user_id': uid,
@@ -315,13 +298,13 @@ async def handle_message(message: Message):
             })
             await notify_manager(trip_id, slots, message.from_user)
             response = {
-                "message": "Отправили заявку менеджеру",
+                "message": REQUEST_SENT_MESSAGE,
             }
             await message.answer(
                 f"\n```\n{json.dumps(response, ensure_ascii=False, indent=2)}\n```"
             )
         else:
-            await message.answer("Напишите, пожалуйста, да или нет.")
+            await message.answer(YESNO_PROMPT_USER)
         return
 
     if state.get('confirm'):
@@ -330,9 +313,9 @@ async def handle_message(message: Message):
                 await clear_user_state(uid)
             except StateStorageError as e:
                 logger.exception("Failed to clear state: %s", e)
-                await message.answer('Сервис временно недоступен, попробуйте позже.')
+                await message.answer(SERVICE_ERROR_MESSAGE)
                 return
-            await message.answer('Бронирование отменено. Если захотите, можем попробовать ещё раз!')
+            await message.answer(BOOKING_CANCELLED_MESSAGE)
             return
 
         choice = await parse_yes_no(message.text)
@@ -343,7 +326,7 @@ async def handle_message(message: Message):
                 await set_user_state(uid, state)
             except StateStorageError as e:
                 logger.exception("Failed to save state: %s", e)
-                await message.answer('Сервис временно недоступен, попробуйте позже.')
+                await message.answer(SERVICE_ERROR_MESSAGE)
                 return
             await message.answer(EXTRA_QUESTIONS[state['extra_questions'][0]])
         else:
