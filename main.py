@@ -1,7 +1,7 @@
 import asyncio
 import json
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Optional
 
 from aiogram import Bot, Dispatcher, types
@@ -93,7 +93,7 @@ async def notify_manager(slots: Dict[str, Optional[str]], user: types.User):
 
 async def greet_if_needed(message: Message):
     uid = message.from_user.id
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     last = last_seen.get(uid)
     if not last or now - last > timedelta(hours=2):
         await message.answer(
