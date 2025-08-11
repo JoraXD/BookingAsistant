@@ -236,12 +236,81 @@ async def handle_message(message: Message):
         await message.answer('Поездка не найдена.')
         return
     if state.get('extra_questions'):
+        if state.get('collect_passenger'):
+            idx = state.get('current_passenger', 1)
+            stage = state.get('passenger_stage', 'name')
+            answer = message.text
+            if stage == 'name':
+                parts = answer.strip().split()
+                if len(parts) < 3:
+                    await message.answer('Пожалуйста, укажите полное ФИО (Фамилия Имя Отчество).')
+                    return
+                state['temp_name'] = ' '.join(parts)
+                state['passenger_stage'] = 'phone'
+                try:
+                    await set_user_state(uid, state)
+                except StateStorageError as e:
+                    logger.exception("Failed to save state: %s", e)
+                    await message.answer('Сервис временно недоступен, попробуйте позже.')
+                    return
+                await message.answer(f'Контактный номер пассажира {idx}?')
+            else:
+                passenger = {'fio': state.pop('temp_name', ''), 'phone': answer}
+                contacts = state.setdefault('passenger_contacts', [])
+                contacts.append(passenger)
+                if idx < state.get('passenger_count', 0):
+                    state['current_passenger'] = idx + 1
+                    state['passenger_stage'] = 'name'
+                    try:
+                        await set_user_state(uid, state)
+                    except StateStorageError as e:
+                        logger.exception("Failed to save state: %s", e)
+                        await message.answer('Сервис временно недоступен, попробуйте позже.')
+                        return
+                    await message.answer(f'Полное ФИО пассажира {state["current_passenger"]}?')
+                else:
+                    state['passengers'] = state.pop('passenger_contacts', [])
+                    state.pop('collect_passenger', None)
+                    state.pop('current_passenger', None)
+                    state.pop('passenger_stage', None)
+                    state.pop('passenger_count', None)
+                    state.pop('extra_questions', None)
+                    try:
+                        await set_user_state(uid, state)
+                    except StateStorageError as e:
+                        logger.exception("Failed to save state: %s", e)
+                        await message.answer('Сервис временно недоступен, попробуйте позже.')
+                        return
+                    state['await_search'] = True
+                    try:
+                        await set_user_state(uid, state)
+                    except StateStorageError as e:
+                        logger.exception("Failed to save state: %s", e)
+                        await message.answer('Сервис временно недоступен, попробуйте позже.')
+                        return
+                    await message.answer('Хотите, я поищу билеты?')
+            return
+
         questions = state['extra_questions']
         key = questions.pop(0)
         answer = message.text
         if key == 'time':
             parsed = await normalize_time(answer)
             state[key] = parsed if parsed else answer
+        elif key == 'passengers':
+            state['passenger_count'] = int(answer) if answer.isdigit() else 0
+            if state['passenger_count'] > 0:
+                state['collect_passenger'] = True
+                state['current_passenger'] = 1
+                state['passenger_stage'] = 'name'
+                try:
+                    await set_user_state(uid, state)
+                except StateStorageError as e:
+                    logger.exception("Failed to save state: %s", e)
+                    await message.answer('Сервис временно недоступен, попробуйте позже.')
+                    return
+                await message.answer('Полное ФИО пассажира 1?')
+                return
         else:
             state[key] = answer
         try:
@@ -287,6 +356,7 @@ async def handle_message(message: Message):
                 'destination': slots['to'],
                 'date': slots['date'],
                 'transport': slots['transport'],
+                'contact': json.dumps(slots.get('passengers')) if slots.get('passengers') else None,
                 'status': 'pending',
             })
             await notify_manager(trip_id, slots, message.from_user)
@@ -311,6 +381,7 @@ async def handle_message(message: Message):
                 'destination': slots['to'],
                 'date': slots['date'],
                 'transport': slots['transport'],
+                'contact': json.dumps(slots.get('passengers')) if slots.get('passengers') else None,
                 'status': 'pending',
             })
             await notify_manager(trip_id, slots, message.from_user)
