@@ -24,18 +24,46 @@ class AsyncIamTokenManager:
     Получает и кэширует IAM-токен по authorized key (sa-key.json) сервисного аккаунта.
     Автоматически обновляет токен, если он скоро истечёт или прошёл форс-интервал.
     """
-    def __init__(self, sa_key_path: str, refresh_every_hours: int = 10, session: Optional[aiohttp.ClientSession] = None):
-        with open(sa_key_path, "r", encoding="utf-8") as f:
-            key = json.load(f)
+    def __init__(
+        self,
+        sa_key_path: str,
+        refresh_every_hours: int = 10,
+        session: Optional[aiohttp.ClientSession] = None,
+    ):
+        """Initialize manager from service account key or environment token.
 
-        self._sa_id: str = key["service_account_id"]
-        self._key_id: str = key["id"]
-        self._private_key_pem: bytes = key["private_key"].encode("utf-8")
+        If ``YANDEX_IAM_TOKEN`` is provided in the environment, the service
+        account key is not required and the token will be used as-is. This makes
+        it possible to run tests or offline scripts without the SA JSON file.
+        """
 
+        # Common state initialisation
         self._state = _TokenState()
         self._force_interval = refresh_every_hours * 3600
         self._lock = asyncio.Lock()
         self._session = session  # можно пробросить общий ClientSession
+
+        override = os.getenv("YANDEX_IAM_TOKEN")
+        if override:
+            # Placeholders so that _build_jwt is never called when override is set
+            self._sa_id = ""
+            self._key_id = ""
+            self._private_key_pem = b""
+            return
+
+        try:
+            with open(sa_key_path, "r", encoding="utf-8") as f:
+                key = json.load(f)
+        except FileNotFoundError as e:
+            raise RuntimeError(
+                "Service account key file not found. Provide YANDEX_SA_KEY_PATH or set YANDEX_IAM_TOKEN."
+            ) from e
+        except json.JSONDecodeError as e:
+            raise RuntimeError("Service account key file is invalid JSON") from e
+
+        self._sa_id: str = key["service_account_id"]
+        self._key_id: str = key["id"]
+        self._private_key_pem: bytes = key["private_key"].encode("utf-8")
 
     def _build_jwt(self) -> str:
         now = int(time.time())

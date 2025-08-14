@@ -10,12 +10,12 @@ from __future__ import annotations
 
 import asyncio
 
-from .main import main as _run_user_bot
-from .manager_bot import main as _run_manager_bot
-
-
 async def run_bots() -> None:
     """Start both bots concurrently."""
+
+    # Import lazily so that configuration is not required at import time.
+    from .main import main as _run_user_bot
+    from .manager_bot import main as _run_manager_bot
 
     await asyncio.gather(_run_user_bot(), _run_manager_bot())
 
