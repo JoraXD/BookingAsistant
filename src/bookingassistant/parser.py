@@ -18,7 +18,7 @@ from .gpt import (
 )
 from .texts import TRANSPORT_QUESTION_FALLBACK
 from .config import YANDEX_IAM_TOKEN
-from .models import SlotsModel
+from .models import SlotsModel, DEFAULT_CONFIDENCE
 
 logger = logging.getLogger(__name__)
 
@@ -125,7 +125,7 @@ async def parse_slots(
             if attempt == 0:
                 prompt += (
                     "\nверни строго JSON по схеме {'from': str, 'to': str, 'date': str, "
-                    "'transport': 'bus|train|plane', 'confidence': float} без лишнего текста"
+                    "'transport': 'bus|train|plane', 'confidence': {'from': float, 'to': float, 'date': float, 'transport': float}} без лишнего текста"
                 )
                 continue
     return SlotsModel().model_dump(by_alias=True)
@@ -163,6 +163,7 @@ async def complete_slots(
 
     question: Optional[str] = None
     result = dict(slots)
+    confidence = result.get("confidence", DEFAULT_CONFIDENCE.copy())
 
     try:
         answer = await generate_text(
@@ -180,6 +181,8 @@ async def complete_slots(
             for key in missing:
                 if updated.get(key):
                     result[key] = updated[key]
+                if updated.get("confidence") and key in updated["confidence"]:
+                    confidence[key] = updated["confidence"][key]
         except (json.JSONDecodeError, ValidationError) as e:
             logger.warning("Failed to parse completion: %s", e)
     except (asyncio.TimeoutError, aiohttp.ClientError) as e:
@@ -189,6 +192,8 @@ async def complete_slots(
 
     if "transport" in missing and not result.get("transport"):
         question = await generate_question("transport", TRANSPORT_QUESTION_FALLBACK)
+
+    result["confidence"] = confidence
 
     return result, question
 

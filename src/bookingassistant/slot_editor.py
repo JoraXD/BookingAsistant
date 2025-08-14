@@ -2,6 +2,7 @@ import logging
 from typing import Dict, Optional
 
 from .parser import parse_slots
+from .models import DEFAULT_CONFIDENCE
 from .utils import normalize_date
 
 logger = logging.getLogger(__name__)
@@ -45,6 +46,7 @@ async def update_slots(
             "to": None,
             "date": None,
             "transport": None,
+            "confidence": DEFAULT_CONFIDENCE.copy(),
         },
     )
 
@@ -61,6 +63,8 @@ async def update_slots(
         parsed["date"] = normalize_date(parsed["date"]) or parsed["date"]
 
     changed = {}
+    parsed_conf = parsed.get("confidence", {})
+    conf = slots.get("confidence", DEFAULT_CONFIDENCE.copy())
     for key in ["from", "to", "date", "transport"]:
         value = parsed.get(key)
         if value:
@@ -70,6 +74,9 @@ async def update_slots(
             if slots.get(key) is not None and slots.get(key) != value:
                 changed[key] = value
             slots[key] = value
+        if key in parsed_conf:
+            conf[key] = parsed_conf[key]
+    slots["confidence"] = conf
 
     session_data[user_id] = slots
 

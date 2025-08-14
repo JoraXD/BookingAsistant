@@ -16,7 +16,7 @@ from bookingassistant.models import SlotsModel
 async def test_parse_slots_retry_success():
     bad = {"result": {"alternatives": [{"message": {"text": "не json"}}]}}
     good_text = (
-        "{\"from\": \"A\", \"to\": \"B\", \"date\": \"2024-01-01\", \"transport\": \"bus\", \"confidence\": 0.5}"
+        "{\"from\": \"A\", \"to\": \"B\", \"date\": \"2024-01-01\", \"transport\": \"bus\", \"confidence\": {\"from\": 0.5, \"to\": 0.6, \"date\": 0.7, \"transport\": 0.8}}"
     )
     good = {"result": {"alternatives": [{"message": {"text": good_text}}]}}
     with aioresponses() as m:
@@ -28,7 +28,7 @@ async def test_parse_slots_retry_success():
             "to": "B",
             "date": "2024-01-01",
             "transport": "bus",
-            "confidence": 0.5,
+            "confidence": {"from": 0.5, "to": 0.6, "date": 0.7, "transport": 0.8},
         }
         assert len(m.requests[('POST', URL(API_URL))]) == 2
 

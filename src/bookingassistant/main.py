@@ -68,6 +68,20 @@ def get_missing_slots(slots: Dict[str, Optional[str]]):
     return [key for key in REQUIRED_SLOTS if not slots.get(key)]
 
 
+CONFIDENCE_THRESHOLD = 0.6
+
+
+def get_low_confidence_slots(
+    slots: Dict[str, Optional[str]], threshold: float = CONFIDENCE_THRESHOLD
+):
+    conf = slots.get("confidence", {})
+    return [
+        key
+        for key in REQUIRED_SLOTS
+        if slots.get(key) and conf.get(key, 1.0) < threshold
+    ]
+
+
 async def notify_manager(
     trip_id: int, slots: Dict[str, Optional[str]], user: types.User
 ):
@@ -161,6 +175,7 @@ async def handle_slots(
         await message.answer(SERVICE_ERROR_MESSAGE)
         return
     missing = get_missing_slots(slots)
+    low_conf = get_low_confidence_slots(slots)
 
     changed_msg = ""
     if changed:
@@ -170,7 +185,7 @@ async def handle_slots(
         ]
         changed_msg = "Изменил " + ", ".join(parts) + ".\n"
 
-    if not changed and all(not v for v in slots.values()):
+    if not changed and all(not v for k, v in slots.items() if k != "confidence"):
         text = await generate_fallback(message.text, DEFAULT_FALLBACK)
         await message.answer(text)
         return
@@ -182,6 +197,16 @@ async def handle_slots(
             question_text = await generate_question(
                 missing[0], DEFAULT_QUESTIONS[missing[0]]
             )
+        state["last_question"] = question_text
+        try:
+            await set_user_state(uid, state)
+        except StateStorageError as e:
+            logger.exception("Failed to save state: %s", e)
+        await message.answer(changed_msg + question_text)
+    elif low_conf:
+        question_text = await generate_question(
+            low_conf[0], DEFAULT_QUESTIONS[low_conf[0]]
+        )
         state["last_question"] = question_text
         try:
             await set_user_state(uid, state)
@@ -382,6 +407,7 @@ async def handle_message(message: Message):
                 changed_msg = "Изменил " + ", ".join(parts) + ".\n"
 
             missing = get_missing_slots(slots)
+            low_conf = get_low_confidence_slots(slots)
             if missing:
                 if transport_question and "transport" in missing:
                     question_text = transport_question
@@ -389,6 +415,16 @@ async def handle_message(message: Message):
                     question_text = await generate_question(
                         missing[0], DEFAULT_QUESTIONS[missing[0]]
                     )
+                state["last_question"] = question_text
+                try:
+                    await set_user_state(uid, state)
+                except StateStorageError as e:
+                    logger.exception("Failed to save state: %s", e)
+                await message.answer(changed_msg + question_text)
+            elif low_conf:
+                question_text = await generate_question(
+                    low_conf[0], DEFAULT_QUESTIONS[low_conf[0]]
+                )
                 state["last_question"] = question_text
                 try:
                     await set_user_state(uid, state)

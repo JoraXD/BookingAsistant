@@ -74,5 +74,8 @@ async def test_complete_slots_skipped_when_full():
         }
         updated, question = await parser.complete_slots(payload, [])
         assert ("POST", URL(parser.API_URL)) not in m.requests
-    assert updated == slots
+    assert updated["from"] == slots["from"]
+    assert updated["to"] == slots["to"]
+    assert updated["date"] == slots["date"]
+    assert updated["transport"] == slots["transport"]
     assert question is None
