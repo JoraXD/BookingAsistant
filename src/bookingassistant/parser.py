@@ -132,73 +132,59 @@ async def parse_slots(
 
 
 async def complete_slots(
-    slots: Dict[str, Optional[str]],
+    payload: Dict[str, Optional[str]],
     missing: list[str],
 ) -> tuple[Dict[str, Optional[str]], Optional[str]]:
     """Дополняет или исправляет уже известные слоты через YandexGPT.
 
-    Принимает список незаполненных ``missing`` слотов и запрашивает модель
-    только по ним. Если список пуст, запрос к API не выполняется и текущие
-    данные возвращаются без изменений.
+    ``payload`` должен содержать ключи ``last_question``, ``user_input`` и
+    ``known_slots``. В модель отправляются только эти данные без истории
+    диалога, что ограничивает размер контекста запроса.
 
     Возвращает кортеж ``(slots, question)``, где ``question`` содержит текст
     уточняющего вопроса по транспорту, если он так и не был распознан.
     """
+
+    slots = payload.get("known_slots", {})
     logger.info("Current slots: %s, missing: %s", slots, missing)
 
     if not missing:
         logger.info("No missing slots, skipping completion API call")
         return slots, None
 
-    headers = {
-        "Authorization": f"Bearer {YANDEX_IAM_TOKEN}",
-        "Content-Type": "application/json",
+    data = {
+        "last_question": payload.get("last_question"),
+        "user_input": payload.get("user_input"),
+        "known_slots": slots,
     }
-    payload = {
-        "modelUri": MODEL_URI,
-        "completionOptions": {
-            "stream": False,
-            "temperature": 0.2,
-            "maxTokens": 2000,
-        },
-        "messages": [
-            {"role": "system", "text": build_prompt(COMPLETE_PROMPT)},
-            {
-                "role": "user",
-                "text": json.dumps(
-                    {k: slots.get(k) for k in missing}, ensure_ascii=False
-                ),
-            },
-        ],
-    }
+    prompt = build_prompt(
+        f"{COMPLETE_PROMPT}\n{json.dumps(data, ensure_ascii=False)}\nJSON:"
+    )
+
     question: Optional[str] = None
-    result = slots
+    result = dict(slots)
+
     try:
-        async with create_session() as session:
-            async with session.post(
-                API_URL, headers=headers, json=payload, timeout=30
-            ) as response:
-                response.raise_for_status()
-                data = await response.json()
-                answer = (
-                    data.get("result", {})
-                    .get("alternatives", [{}])[0]
-                    .get("message", {})
-                    .get("text", "")
-                )
-                logger.info("Yandex completion: %s", answer)
-                try:
-                    updated = SlotsModel.model_validate_json(
-                        _extract_json(answer)
-                    ).model_dump(by_alias=True)
-                    for key in missing:
-                        if updated.get(key):
-                            result[key] = updated[key]
-                except (json.JSONDecodeError, ValidationError) as e:
-                    logger.warning("Failed to parse completion: %s", e)
+        answer = await generate_text(
+            prompt,
+            temperature=0.2,
+            top_p=0.5,
+            max_tokens=2000,
+            timeout=30,
+        )
+        logger.info("Yandex completion: %s", answer)
+        try:
+            updated = SlotsModel.model_validate_json(
+                _extract_json(answer)
+            ).model_dump(by_alias=True)
+            for key in missing:
+                if updated.get(key):
+                    result[key] = updated[key]
+        except (json.JSONDecodeError, ValidationError) as e:
+            logger.warning("Failed to parse completion: %s", e)
     except (asyncio.TimeoutError, aiohttp.ClientError) as e:
         logger.exception("Failed to complete slots: %s", e)
-    except Exception as e:
+    except Exception as e:  # pragma: no cover - unexpected
         logger.exception("Failed to complete slots: %s", e)
 
     if "transport" in missing and not result.get("transport"):
