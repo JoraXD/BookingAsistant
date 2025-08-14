@@ -11,6 +11,37 @@ from .maps import DAYS_MAP, TRANSPORT_RU
 TIME_PROMPT = load_prompt("time.txt")
 
 
+TRANSPORT_CODES = {"bus", "train", "plane"}
+
+# Simple offline cache of known cities for tests and validation without network.
+CITY_CACHE = {
+    "москва",
+    "казань",
+    "нижний новгород",
+    "самара",
+    "сочи",
+    "гродно",
+    "минск",
+}
+
+
+def normalize_transport(value: Optional[str]) -> Optional[str]:
+    """Return normalized transport code or ``None`` if unknown."""
+    if not value:
+        return None
+    value = value.lower()
+    return value if value in TRANSPORT_CODES else None
+
+
+async def validate_city(name: Optional[str]) -> Optional[str]:
+    """Return city name if it exists in local cache, otherwise ``None``."""
+    if not name:
+        return None
+    if name.strip().lower() in CITY_CACHE:
+        return name
+    return None
+
+
 def next_weekday(target_word: str) -> str:
     """Return next date for given weekday word in YYYY-MM-DD."""
     today = datetime.now()
