@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -80,6 +81,12 @@ class AsyncIamTokenManager:
         )
 
     async def get_token(self) -> str:
+        # Позволяем переопределить IAM-токен через переменную окружения,
+        # чтобы тесты и офлайн-запуски не обращались к сети.
+        override = os.getenv("YANDEX_IAM_TOKEN")
+        if override:
+            return override
+
         # Быстрая проверка без блокировки
         if not self._needs_refresh_unlocked():
             return self._state.token  # type: ignore[return-value]
