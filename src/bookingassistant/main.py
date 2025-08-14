@@ -143,7 +143,12 @@ async def handle_slots(
 
     missing_before = get_missing_slots(slots)
     if missing_before:
-        slots, transport_question = await complete_slots(slots, missing_before)
+        payload = {
+            "last_question": question,
+            "user_input": text,
+            "known_slots": slots,
+        }
+        slots, transport_question = await complete_slots(payload, missing_before)
     else:
         logger.info("All slots filled, skipping completion API call")
         transport_question = None
@@ -356,7 +361,14 @@ async def handle_message(message: Message):
             slots, changed = await update_slots(uid, message.text, session_data)
             missing_before = get_missing_slots(slots)
             if missing_before:
-                slots, transport_question = await complete_slots(slots, missing_before)
+                payload = {
+                    "last_question": None,
+                    "user_input": message.text,
+                    "known_slots": slots,
+                }
+                slots, transport_question = await complete_slots(
+                    payload, missing_before
+                )
             else:
                 logger.info("All slots filled, skipping completion API call")
                 transport_question = None
