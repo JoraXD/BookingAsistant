@@ -24,6 +24,9 @@ MANAGER_BOT_TOKEN=manager_bot_token
 MANAGER_CHAT_ID=manager_chat_id
 ```
 
+При наличии готового IAM-токена можно обойтись без файла ключа и просто
+указать его через переменную окружения `YANDEX_IAM_TOKEN`.
+
 3. Установите зависимости:
 
 ```bash
