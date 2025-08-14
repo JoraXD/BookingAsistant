@@ -14,17 +14,9 @@ from .gpt import (
     build_prompt,
     create_session,
     generate_text,
+    load_prompt,
 )
-from .texts import (
-    SLOTS_PROMPT_TEMPLATE,
-    COMPLETE_PROMPT_TEMPLATE,
-    QUESTION_PROMPT,
-    TRANSPORT_QUESTION_FALLBACK,
-    CONFIRM_PROMPT,
-    FALLBACK_PROMPT,
-    YESNO_PROMPT,
-    HISTORY_PROMPT,
-)
+from .texts import TRANSPORT_QUESTION_FALLBACK
 from .config import YANDEX_IAM_TOKEN
 from .models import SlotsModel
 
@@ -41,9 +33,14 @@ WEEKDAYS_RU = [
     "воскресенье",
 ]
 TODAY_WEEKDAY = WEEKDAYS_RU[datetime.now().weekday()]
-SLOTS_PROMPT = SLOTS_PROMPT_TEMPLATE.replace("{today_date}", TODAY_DATE).replace(
-    "{today_weekday}", TODAY_WEEKDAY
-)
+
+PARSE_SLOTS_PROMPT = load_prompt("parse_slots.txt")
+QUESTION_PROMPT = load_prompt("question.txt")
+CONFIRM_PROMPT = load_prompt("confirm.txt")
+FALLBACK_PROMPT = load_prompt("fallback.txt")
+YESNO_PROMPT = load_prompt("yesno.txt")
+HISTORY_PROMPT = load_prompt("history.txt")
+COMPLETE_PROMPT_TEMPLATE = load_prompt("complete_slots.txt")
 COMPLETE_PROMPT = COMPLETE_PROMPT_TEMPLATE.replace("{today_date}", TODAY_DATE).replace(
     "{today_weekday}", TODAY_WEEKDAY
 )
@@ -110,55 +107,27 @@ async def parse_slots(
     if question:
         text = f"Вопрос: {question}\nОтвет: {text}"
     logger.info("User message: %s", text)
-    headers = {
-        "Authorization": f"Bearer {YANDEX_IAM_TOKEN}",
-        "Content-Type": "application/json",
-    }
-    payload = {
-        "modelUri": MODEL_URI,
-        "completionOptions": {
-            "stream": False,
-            "temperature": 0.2,
-            "maxTokens": 2000,
-        },
-        "messages": [
-            {"role": "system", "text": build_prompt(SLOTS_PROMPT)},
-            {"role": "user", "text": text},
-        ],
-    }
+    prompt = f"{PARSE_SLOTS_PROMPT}\nТекст: {text}\nJSON:"
     for attempt in range(2):
         try:
-            async with create_session() as session:
-                async with session.post(
-                    API_URL, headers=headers, json=payload, timeout=30
-                ) as response:
-                    response.raise_for_status()
-                    data = await response.json()
-                    answer = (
-                        data.get("result", {})
-                        .get("alternatives", [{}])[0]
-                        .get("message", {})
-                        .get("text", "")
-                    )
-                    logger.info("Yandex response: %s", answer)
-                    model = SlotsModel.model_validate_json(_extract_json(answer))
-                    return model.model_dump(by_alias=True)
+            answer = await generate_text(
+                prompt,
+                temperature=0.1,
+                top_p=0.5,
+                max_tokens=2000,
+                timeout=30,
+            )
+            logger.info("Yandex response: %s", answer)
+            model = SlotsModel.model_validate_json(_extract_json(answer))
+            return model.model_dump(by_alias=True)
         except (json.JSONDecodeError, ValidationError) as e:
             logger.warning("Failed to parse slots: %s", e)
             if attempt == 0:
-                payload["messages"].append(
-                    {
-                        "role": "user",
-                        "text": "верни строго JSON по схеме {'from': str, 'to': str, 'date': str, 'transport': 'bus|train|plane', 'confidence': float} без лишнего текста",
-                    }
+                prompt += (
+                    "\nверни строго JSON по схеме {'from': str, 'to': str, 'date': str, "
+                    "'transport': 'bus|train|plane', 'confidence': float} без лишнего текста"
                 )
                 continue
-        except (asyncio.TimeoutError, aiohttp.ClientError) as e:
-            logger.exception("Failed to parse slots: %s", e)
-            break
-        except Exception as e:  # pragma: no cover - unexpected
-            logger.exception("Failed to parse slots: %s", e)
-            break
     return SlotsModel().model_dump(by_alias=True)
 
 

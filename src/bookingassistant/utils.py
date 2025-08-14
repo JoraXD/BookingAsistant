@@ -5,9 +5,10 @@ from typing import Optional
 
 import dateparser
 
-from .gpt import build_prompt, generate_text
+from .gpt import build_prompt, generate_text, load_prompt
 from .maps import DAYS_MAP, TRANSPORT_RU
-from .texts import TIME_PROMPT
+
+TIME_PROMPT = load_prompt("time.txt")
 
 
 def next_weekday(target_word: str) -> str:
