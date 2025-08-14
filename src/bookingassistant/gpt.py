@@ -7,13 +7,17 @@ from typing import Any
 import aiohttp
 import certifi
 
-from .config import YANDEX_IAM_TOKEN, YANDEX_FOLDER_ID
+from .config import YANDEX_FOLDER_ID, YANDEX_SA_KEY_PATH
+from .iam import AsyncIamTokenManager, _TokenState
 
 API_URL = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
 MODEL_URI = f"gpt://{YANDEX_FOLDER_ID}/yandexgpt-lite"
 
 # Shared SSL context using certifi certificate bundle
 SSL_CONTEXT = ssl.create_default_context(cafile=certifi.where())
+
+# Singleton IAM manager for the process
+IAM = AsyncIamTokenManager(sa_key_path=YANDEX_SA_KEY_PATH, refresh_every_hours=10)
 
 
 def create_session() -> aiohttp.ClientSession:
@@ -32,7 +36,7 @@ async def generate_text(
 ) -> str:
     """Call YandexGPT and return the generated text."""
     headers = {
-        "Authorization": f"Bearer {YANDEX_IAM_TOKEN}",
+        "Authorization": f"Bearer {await IAM.get_token()}",
         "Content-Type": "application/json",
     }
     payload: dict[str, Any] = {
@@ -50,6 +54,21 @@ async def generate_text(
             async with session.post(
                 API_URL, headers=headers, json=payload, timeout=timeout
             ) as response:
+                if response.status == 401:
+                    IAM._state = _TokenState()
+                    headers["Authorization"] = f"Bearer {await IAM.get_token()}"
+                    async with session.post(
+                        API_URL, headers=headers, json=payload, timeout=timeout
+                    ) as resp2:
+                        resp2.raise_for_status()
+                        data = await resp2.json()
+                        return (
+                            data.get("result", {})
+                            .get("alternatives", [{}])[0]
+                            .get("message", {})
+                            .get("text", "")
+                            .strip()
+                        )
                 response.raise_for_status()
                 data = await response.json()
                 return (
