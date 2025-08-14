@@ -17,7 +17,7 @@ async def test_complete_slots_prompt_limited_fields(monkeypatch):
     async def fake_generate_text(prompt, **kwargs):
         if "prompt" not in captured:
             captured["prompt"] = prompt
-        return '{"from": "", "to": "", "date": "", "transport": "bus", "confidence": 1.0}'
+        return '{"from": "", "to": "", "date": "", "transport": "bus", "confidence": {"from": 1.0, "to": 1.0, "date": 1.0, "transport": 1.0}}'
 
     monkeypatch.setattr(parser, "generate_text", fake_generate_text)
 

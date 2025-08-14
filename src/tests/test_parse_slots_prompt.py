@@ -14,7 +14,7 @@ async def test_parse_slots_uses_prompt_file(monkeypatch):
 
     async def fake_generate_text(prompt, **kwargs):
         captured["prompt"] = prompt
-        return '{"from": "", "to": "", "date": "", "transport": "", "confidence": 0.0}'
+        return '{"from": "", "to": "", "date": "", "transport": "", "confidence": {"from": 0.0, "to": 0.0, "date": 0.0, "transport": 0.0}}'
 
     monkeypatch.setattr(parser, "generate_text", fake_generate_text)
     await parser.parse_slots("пример")
