@@ -7,7 +7,12 @@ from typing import Any
 import aiohttp
 import certifi
 
-from .config import YANDEX_FOLDER_ID, YANDEX_SA_KEY_PATH
+from .config import (
+    YANDEX_FOLDER_ID,
+    YANDEX_SA_KEY_PATH,
+    YANDEX_API_KEY,
+    USE_IAM,
+)
 from .iam import AsyncIamTokenManager, _TokenState
 
 API_URL = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
@@ -17,7 +22,11 @@ MODEL_URI = f"gpt://{YANDEX_FOLDER_ID}/yandexgpt-lite"
 SSL_CONTEXT = ssl.create_default_context(cafile=certifi.where())
 
 # Singleton IAM manager for the process
-IAM = AsyncIamTokenManager(sa_key_path=YANDEX_SA_KEY_PATH, refresh_every_hours=10)
+IAM = (
+    AsyncIamTokenManager(sa_key_path=YANDEX_SA_KEY_PATH, refresh_every_hours=10)
+    if USE_IAM
+    else None
+)
 
 
 def create_session() -> aiohttp.ClientSession:
@@ -35,10 +44,16 @@ async def generate_text(
     timeout: int = 15,
 ) -> str:
     """Call YandexGPT and return the generated text."""
-    headers = {
-        "Authorization": f"Bearer {await IAM.get_token()}",
-        "Content-Type": "application/json",
-    }
+    if USE_IAM:
+        headers = {
+            "Authorization": f"Bearer {await IAM.get_token()}",
+            "Content-Type": "application/json",
+        }
+    else:
+        headers = {
+            "Authorization": f"Api-Key {YANDEX_API_KEY}",
+            "Content-Type": "application/json",
+        }
     payload: dict[str, Any] = {
         "modelUri": MODEL_URI,
         "completionOptions": {
@@ -54,7 +69,7 @@ async def generate_text(
             async with session.post(
                 API_URL, headers=headers, json=payload, timeout=timeout
             ) as response:
-                if response.status == 401:
+                if USE_IAM and response.status == 401:
                     IAM._state = _TokenState()
                     headers["Authorization"] = f"Bearer {await IAM.get_token()}"
                     async with session.post(
@@ -79,8 +94,16 @@ async def generate_text(
                     .strip()
                 )
     except (asyncio.TimeoutError, aiohttp.ClientError) as e:
+        if (
+            not USE_IAM
+            and isinstance(e, aiohttp.ClientResponseError)
+            and e.status in (401, 403)
+        ):
+            raise
         logging.exception("Failed to generate text: %s", e)
     except Exception as e:  # pragma: no cover - unexpected
+        if not USE_IAM:
+            raise
         logging.exception("Failed to generate text: %s", e)
     return ""
 
