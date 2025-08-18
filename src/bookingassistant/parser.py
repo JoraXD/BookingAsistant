@@ -92,15 +92,39 @@ def parse_transport(text: str) -> Optional[str]:
 
 
 def _extract_json(text: str) -> str:
-    """Return JSON string from YandexGPT answer."""
+    """Return first JSON object string from YandexGPT answer."""
     text = text.strip()
     if text.startswith("```"):
         text = text.strip("`")
         text = text.lstrip("json").strip()
-    match = re.search(r"\{.*\}", text, re.DOTALL)
-    if match:
-        return match.group(0)
-    return text
+
+    start = text.find("{")
+    if start == -1:
+        return text
+
+    depth = 0
+    in_string = False
+    escape = False
+    for i, ch in enumerate(text[start:], start):
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+            continue
+
+        if ch == '"':
+            in_string = True
+        elif ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : i + 1]
+
+    return text[start:]
 
 
 async def parse_slots(
