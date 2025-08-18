@@ -10,6 +10,8 @@ load_dotenv()
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 YANDEX_FOLDER_ID = os.getenv("YANDEX_FOLDER_ID")
 YANDEX_SA_KEY_PATH = os.getenv("YANDEX_SA_KEY_PATH", "sa-key.json")
+USE_IAM = os.getenv("USE_IAM", "false").lower() in ("1", "true", "yes")
+YANDEX_API_KEY = os.getenv("YANDEX_API_KEY")
 MANAGER_BOT_TOKEN = os.getenv("MANAGER_BOT_TOKEN")
 MANAGER_CHAT_ID = os.getenv("MANAGER_CHAT_ID")
 PAYMENT_DETAILS = os.getenv("PAYMENT_DETAILS", "реквизиты не указаны")
@@ -18,3 +20,5 @@ if not TELEGRAM_BOT_TOKEN:
     raise RuntimeError("TELEGRAM_BOT_TOKEN is not set")
 if not YANDEX_FOLDER_ID:
     raise RuntimeError("YANDEX_FOLDER_ID is not set")
+if not USE_IAM and not YANDEX_API_KEY:
+    raise RuntimeError("YANDEX_API_KEY is not set")

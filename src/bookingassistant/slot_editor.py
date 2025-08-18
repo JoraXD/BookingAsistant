@@ -58,8 +58,19 @@ async def update_slots(
         parsed = await parse_slots(message, question)
 
     parsed["transport"] = normalize_transport(parsed.get("transport"))
-    parsed["from"] = await validate_city(parsed.get("from"))
-    parsed["to"] = await validate_city(parsed.get("to"))
+    parsed_conf = parsed.get("confidence", {})
+
+    raw_from = parsed.get("from")
+    raw_to = parsed.get("to")
+    parsed["from"] = await validate_city(raw_from)
+    parsed["to"] = await validate_city(raw_to)
+    if parsed["from"] is None and raw_from:
+        parsed["from"] = raw_from
+        parsed_conf["from"] = 0.0
+    if parsed["to"] is None and raw_to:
+        parsed["to"] = raw_to
+        parsed_conf["to"] = 0.0
+
     user_date = normalize_date(message)
     if user_date:
         parsed["date"] = user_date
@@ -67,7 +78,6 @@ async def update_slots(
         parsed["date"] = normalize_date(parsed["date"]) or parsed["date"]
 
     changed = {}
-    parsed_conf = parsed.get("confidence", {})
     conf = slots.get("confidence", DEFAULT_CONFIDENCE.copy())
     for key in ["from", "to", "date", "transport"]:
         value = parsed.get(key)
