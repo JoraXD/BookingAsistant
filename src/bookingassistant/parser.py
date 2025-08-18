@@ -15,10 +15,9 @@ from .gpt import (
     create_session,
     generate_text,
     load_prompt,
-    IAM,
 )
-from .iam import _TokenState
 from .texts import TRANSPORT_QUESTION_FALLBACK
+from .config import YANDEX_IAM_TOKEN
 from .models import SlotsModel, DEFAULT_CONFIDENCE
 from .utils import normalize_transport, validate_city
 
@@ -230,7 +229,7 @@ def _heuristic_history(text: str) -> Dict[str, Optional[str]]:
 async def parse_history_request(text: str) -> Dict[str, Optional[str]]:
     """Return structured history command using YandexGPT if available."""
     headers = {
-        "Authorization": f"Bearer {await IAM.get_token()}",
+        "Authorization": f"Bearer {YANDEX_IAM_TOKEN}",
         "Content-Type": "application/json",
     }
     payload = {
@@ -250,29 +249,6 @@ async def parse_history_request(text: str) -> Dict[str, Optional[str]]:
             async with session.post(
                 API_URL, headers=headers, json=payload, timeout=15
             ) as response:
-                if response.status == 401:
-                    IAM._state = _TokenState()
-                    headers["Authorization"] = f"Bearer {await IAM.get_token()}"
-                    async with session.post(
-                        API_URL, headers=headers, json=payload, timeout=15
-                    ) as resp2:
-                        resp2.raise_for_status()
-                        data = await resp2.json()
-                        answer = (
-                            data.get("result", {})
-                            .get("alternatives", [{}])[0]
-                            .get("message", {})
-                            .get("text", "")
-                        )
-                        logger.info("History request result: %s", answer)
-                        parsed = json.loads(_extract_json(answer))
-                        action = parsed.get("action", "").strip()
-                        if action:
-                            return {
-                                "action": action,
-                                "destination": parsed.get("destination", "").strip(),
-                                "limit": int(parsed.get("limit", 5) or 5),
-                            }
                 response.raise_for_status()
                 data = await response.json()
                 answer = (
@@ -300,7 +276,7 @@ async def parse_history_request(text: str) -> Dict[str, Optional[str]]:
 async def parse_yes_no(text: str) -> str:
     """Return 'yes', 'no' or 'unknown' for arbitrary confirmation text."""
     headers = {
-        "Authorization": f"Bearer {await IAM.get_token()}",
+        "Authorization": f"Bearer {YANDEX_IAM_TOKEN}",
         "Content-Type": "application/json",
     }
     payload = {
@@ -319,24 +295,6 @@ async def parse_yes_no(text: str) -> str:
             async with session.post(
                 API_URL, headers=headers, json=payload, timeout=10
             ) as response:
-                if response.status == 401:
-                    IAM._state = _TokenState()
-                    headers["Authorization"] = f"Bearer {await IAM.get_token()}"
-                    async with session.post(
-                        API_URL, headers=headers, json=payload, timeout=10
-                    ) as resp2:
-                        resp2.raise_for_status()
-                        data = await resp2.json()
-                        answer = (
-                            data.get("result", {})
-                            .get("alternatives", [{}])[0]
-                            .get("message", {})
-                            .get("text", "")
-                        )
-                        parsed = json.loads(_extract_json(answer))
-                        result = parsed.get("result", "").strip().lower()
-                        if result in {"yes", "no"}:
-                            return result
                 response.raise_for_status()
                 data = await response.json()
                 answer = (
