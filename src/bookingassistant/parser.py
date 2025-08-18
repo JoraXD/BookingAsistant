@@ -17,6 +17,7 @@ from .gpt import (
     load_prompt,
     IAM,
 )
+from .config import YANDEX_API_KEY, USE_IAM
 from .iam import _TokenState
 from .texts import TRANSPORT_QUESTION_FALLBACK
 from .models import SlotsModel, DEFAULT_CONFIDENCE
@@ -229,10 +230,16 @@ def _heuristic_history(text: str) -> Dict[str, Optional[str]]:
 
 async def parse_history_request(text: str) -> Dict[str, Optional[str]]:
     """Return structured history command using YandexGPT if available."""
-    headers = {
-        "Authorization": f"Bearer {await IAM.get_token()}",
-        "Content-Type": "application/json",
-    }
+    if USE_IAM:
+        headers = {
+            "Authorization": f"Bearer {await IAM.get_token()}",
+            "Content-Type": "application/json",
+        }
+    else:
+        headers = {
+            "Authorization": f"Api-Key {YANDEX_API_KEY}",
+            "Content-Type": "application/json",
+        }
     payload = {
         "modelUri": MODEL_URI,
         "completionOptions": {
@@ -250,7 +257,7 @@ async def parse_history_request(text: str) -> Dict[str, Optional[str]]:
             async with session.post(
                 API_URL, headers=headers, json=payload, timeout=15
             ) as response:
-                if response.status == 401:
+                if USE_IAM and response.status == 401:
                     IAM._state = _TokenState()
                     headers["Authorization"] = f"Bearer {await IAM.get_token()}"
                     async with session.post(
@@ -291,18 +298,32 @@ async def parse_history_request(text: str) -> Dict[str, Optional[str]]:
                         "limit": int(parsed.get("limit", 5) or 5),
                     }
     except (asyncio.TimeoutError, aiohttp.ClientError) as e:
+        if (
+            not USE_IAM
+            and isinstance(e, aiohttp.ClientResponseError)
+            and e.status in (401, 403)
+        ):
+            raise
         logger.exception("Failed to parse history request: %s", e)
     except Exception as e:
+        if not USE_IAM:
+            raise
         logger.exception("Failed to parse history request: %s", e)
     return _heuristic_history(text)
 
 
 async def parse_yes_no(text: str) -> str:
     """Return 'yes', 'no' or 'unknown' for arbitrary confirmation text."""
-    headers = {
-        "Authorization": f"Bearer {await IAM.get_token()}",
-        "Content-Type": "application/json",
-    }
+    if USE_IAM:
+        headers = {
+            "Authorization": f"Bearer {await IAM.get_token()}",
+            "Content-Type": "application/json",
+        }
+    else:
+        headers = {
+            "Authorization": f"Api-Key {YANDEX_API_KEY}",
+            "Content-Type": "application/json",
+        }
     payload = {
         "modelUri": MODEL_URI,
         "completionOptions": {
@@ -319,7 +340,7 @@ async def parse_yes_no(text: str) -> str:
             async with session.post(
                 API_URL, headers=headers, json=payload, timeout=10
             ) as response:
-                if response.status == 401:
+                if USE_IAM and response.status == 401:
                     IAM._state = _TokenState()
                     headers["Authorization"] = f"Bearer {await IAM.get_token()}"
                     async with session.post(
@@ -350,8 +371,16 @@ async def parse_yes_no(text: str) -> str:
                 if result in {"yes", "no"}:
                     return result
     except (asyncio.TimeoutError, aiohttp.ClientError) as e:
+        if (
+            not USE_IAM
+            and isinstance(e, aiohttp.ClientResponseError)
+            and e.status in (401, 403)
+        ):
+            raise
         logger.exception("Failed to parse yes/no: %s", e)
     except Exception as e:
+        if not USE_IAM:
+            raise
         logger.exception("Failed to parse yes/no: %s", e)
 
     low = text.lower().strip()
