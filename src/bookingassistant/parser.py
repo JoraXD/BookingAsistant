@@ -224,11 +224,20 @@ async def complete_slots(
     if "transport" in missing and not result.get("transport"):
         question = await generate_question("transport", TRANSPORT_QUESTION_FALLBACK)
 
-    result["confidence"] = confidence
     result["transport"] = normalize_transport(result.get("transport"))
-    result["from"] = await validate_city(result.get("from"))
-    result["to"] = await validate_city(result.get("to"))
 
+    raw_from = result.get("from")
+    raw_to = result.get("to")
+    result["from"] = await validate_city(raw_from)
+    result["to"] = await validate_city(raw_to)
+    if result["from"] is None and raw_from:
+        result["from"] = raw_from
+        confidence["from"] = 0.0
+    if result["to"] is None and raw_to:
+        result["to"] = raw_to
+        confidence["to"] = 0.0
+
+    result["confidence"] = confidence
     return result, question
 
 
