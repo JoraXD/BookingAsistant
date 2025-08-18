@@ -20,7 +20,6 @@ from .gpt import (
 from .iam import _TokenState
 from .texts import TRANSPORT_QUESTION_FALLBACK
 from .models import SlotsModel, DEFAULT_CONFIDENCE
-from .utils import normalize_transport, validate_city
 
 logger = logging.getLogger(__name__)
 
@@ -121,9 +120,7 @@ async def parse_slots(
             )
             logger.info("Yandex response: %s", answer)
             model = SlotsModel.model_validate_json(_extract_json(answer))
-            result = model.model_dump(by_alias=True)
-            result["transport"] = normalize_transport(result.get("transport"))
-            return result
+            return model.model_dump(by_alias=True)
         except (json.JSONDecodeError, ValidationError) as e:
             logger.warning("Failed to parse slots: %s", e)
             if attempt == 0:
@@ -132,9 +129,7 @@ async def parse_slots(
                     "'transport': 'bus|train|plane', 'confidence': {'from': float, 'to': float, 'date': float, 'transport': float}} без лишнего текста"
                 )
                 continue
-    result = SlotsModel().model_dump(by_alias=True)
-    result["transport"] = normalize_transport(result.get("transport"))
-    return result
+    return SlotsModel().model_dump(by_alias=True)
 
 
 async def complete_slots(
@@ -200,9 +195,6 @@ async def complete_slots(
         question = await generate_question("transport", TRANSPORT_QUESTION_FALLBACK)
 
     result["confidence"] = confidence
-    result["transport"] = normalize_transport(result.get("transport"))
-    result["from"] = await validate_city(result.get("from"))
-    result["to"] = await validate_city(result.get("to"))
 
     return result, question
 

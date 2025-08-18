@@ -3,7 +3,7 @@ from typing import Dict, Optional
 
 from .parser import parse_slots
 from .models import DEFAULT_CONFIDENCE
-from .utils import normalize_date, normalize_transport, validate_city
+from .utils import normalize_date
 
 logger = logging.getLogger(__name__)
 
@@ -56,10 +56,6 @@ async def update_slots(
         parsed = dict(pre_slots)
     else:
         parsed = await parse_slots(message, question)
-
-    parsed["transport"] = normalize_transport(parsed.get("transport"))
-    parsed["from"] = await validate_city(parsed.get("from"))
-    parsed["to"] = await validate_city(parsed.get("to"))
     user_date = normalize_date(message)
     if user_date:
         parsed["date"] = user_date

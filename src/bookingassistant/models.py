@@ -18,7 +18,7 @@ class SlotsModel(BaseModel):
     from_: Optional[str] = Field(None, alias="from")
     to: Optional[str] = None
     date: Optional[str] = None  # ISO YYYY-MM-DD
-    transport: Optional[str] = None
+    transport: Optional[Transport] = None
     confidence: Dict[str, float] = Field(
         default_factory=lambda: DEFAULT_CONFIDENCE.copy()
     )
