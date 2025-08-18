@@ -17,7 +17,6 @@ dependencies = [
     "fpdf2",
     "certifi",
     "pydantic",
-    "PyJWT[crypto]",
 ]
 
 [tool.pytest.ini_options]
