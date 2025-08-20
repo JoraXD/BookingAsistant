@@ -16,7 +16,6 @@ MANAGER_CHAT_ID = os.getenv("MANAGER_CHAT_ID")
 PAYMENT_DETAILS = os.getenv("PAYMENT_DETAILS", "реквизиты не указаны")
 YANDEX_OAUTH_TOKEN = os.getenv("YANDEX_OAUTH_TOKEN")
 
-
 def log_loaded_config() -> None:
     """Вывести все загруженные значения переменных окружения."""
     logger = logging.getLogger(__name__)
