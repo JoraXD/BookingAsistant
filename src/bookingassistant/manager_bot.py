@@ -97,16 +97,15 @@ def _generate_ticket_pdf(trip: dict) -> bytes:
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Helvetica", size=14)
-    pdf.cell(0, 10, PDF_TICKET_TITLE, align="C", ln=1)
+    pdf.cell(0, 10, text=PDF_TICKET_TITLE, new_x="LMARGIN", new_y="NEXT", align="C")
     pdf.ln(10)
     pdf.set_font("Helvetica", size=12)
     pdf.multi_cell(
         0,
         10,
-        f"Route: {trip['origin']} -> {trip['destination']}\nDate: {trip['date']}\nTransport: {trip['transport']}",
+        text=f"Route: {trip['origin']} -> {trip['destination']}\nDate: {trip['date']}\nTransport: {trip['transport']}",
     )
-    data = pdf.output(dest="S")
-    return data if isinstance(data, (bytes, bytearray)) else data.encode("latin1")
+    return bytes(pdf.output(dest="S"))
 
 
 @dp.message(Command("confirm"))

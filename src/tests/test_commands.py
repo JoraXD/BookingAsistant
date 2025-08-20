@@ -11,8 +11,6 @@ from aioresponses import aioresponses
 from yarl import URL
 
 import bookingassistant.parser as parser
-import bookingassistant.slot_editor as slot_editor
-from bookingassistant.utils import pre_extract_slots
 
 importlib.reload(parser)
 
@@ -38,27 +36,3 @@ async def test_cancel_command():
         data["destination"].lower() == "москву"
         or data["destination"].lower() == "москва"
     )
-
-
-@pytest.mark.asyncio
-async def test_no_llm_called(monkeypatch):
-    called = False
-
-    async def fake_generate_text(*args, **kwargs):
-        nonlocal called
-        called = True
-        return ""
-
-    monkeypatch.setattr(parser, "generate_text", fake_generate_text)
-
-    async def fake_parse_slots(*args, **kwargs):
-        raise AssertionError("parse_slots should not be called")
-
-    monkeypatch.setattr(slot_editor, "parse_slots", fake_parse_slots)
-
-    session_data = {}
-    text = "Я завтра в Минск на автобусе из Гродно"
-    pre = pre_extract_slots(text)
-    await slot_editor.update_slots(1, text, session_data, pre_slots=pre)
-
-    assert called is False

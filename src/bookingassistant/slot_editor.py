@@ -2,8 +2,7 @@ import logging
 from typing import Dict, Optional
 
 from .parser import parse_slots
-from .models import DEFAULT_CONFIDENCE
-from .utils import normalize_date, normalize_transport, validate_city
+from .utils import normalize_date
 
 logger = logging.getLogger(__name__)
 
@@ -13,7 +12,6 @@ async def update_slots(
     message: str,
     session_data: Dict[int, Dict[str, Optional[str]]],
     question: Optional[str] = None,
-    pre_slots: Optional[Dict[str, Optional[str]]] = None,
 ) -> tuple[Dict[str, Optional[str]], Dict[str, str]]:
     """Update saved slots for a user based on correction message.
 
@@ -46,20 +44,12 @@ async def update_slots(
             "to": None,
             "date": None,
             "transport": None,
-            "confidence": DEFAULT_CONFIDENCE.copy(),
         },
     )
 
     logger.info("Editing slots for %s: %s", user_id, message)
 
-    if pre_slots is not None:
-        parsed = dict(pre_slots)
-    else:
-        parsed = await parse_slots(message, question)
-
-    parsed["transport"] = normalize_transport(parsed.get("transport"))
-    parsed["from"] = await validate_city(parsed.get("from"))
-    parsed["to"] = await validate_city(parsed.get("to"))
+    parsed = await parse_slots(message, question)
     user_date = normalize_date(message)
     if user_date:
         parsed["date"] = user_date
@@ -67,8 +57,6 @@ async def update_slots(
         parsed["date"] = normalize_date(parsed["date"]) or parsed["date"]
 
     changed = {}
-    parsed_conf = parsed.get("confidence", {})
-    conf = slots.get("confidence", DEFAULT_CONFIDENCE.copy())
     for key in ["from", "to", "date", "transport"]:
         value = parsed.get(key)
         if value:
@@ -78,9 +66,6 @@ async def update_slots(
             if slots.get(key) is not None and slots.get(key) != value:
                 changed[key] = value
             slots[key] = value
-        if key in parsed_conf:
-            conf[key] = parsed_conf[key]
-    slots["confidence"] = conf
 
     session_data[user_id] = slots
 

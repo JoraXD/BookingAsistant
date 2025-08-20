@@ -40,7 +40,7 @@ from .parser import (
 from .atlas import build_routes_url, link_has_routes
 
 from .slot_editor import update_slots
-from .utils import display_transport, normalize_time, pre_extract_slots
+from .utils import display_transport, normalize_time
 from .storage import save_trip, get_last_trips, cancel_trip
 from .state_storage import (
     get_user_state,
@@ -66,20 +66,6 @@ REQUIRED_SLOTS = ["from", "to", "date", "transport"]
 
 def get_missing_slots(slots: Dict[str, Optional[str]]):
     return [key for key in REQUIRED_SLOTS if not slots.get(key)]
-
-
-CONFIDENCE_THRESHOLD = 0.6
-
-
-def get_low_confidence_slots(
-    slots: Dict[str, Optional[str]], threshold: float = CONFIDENCE_THRESHOLD
-):
-    conf = slots.get("confidence", {})
-    return [
-        key
-        for key in REQUIRED_SLOTS
-        if slots.get(key) and conf.get(key, 1.0) < threshold
-    ]
 
 
 async def notify_manager(
@@ -143,26 +129,12 @@ async def handle_slots(
             return
     question = state.pop("last_question", None)
 
-    pre_slots = pre_extract_slots(text)
-    filled = {k: v for k, v in pre_slots.items() if v}
-    conflict = any(state.get(k) and state[k] != v for k, v in filled.items())
-
     session_data = {uid: state}
-    if not conflict and len(filled) >= 3:
-        slots, changed = await update_slots(
-            uid, text, session_data, question, pre_slots=pre_slots
-        )
-    else:
-        slots, changed = await update_slots(uid, text, session_data, question)
+    slots, changed = await update_slots(uid, text, session_data, question)
 
     missing_before = get_missing_slots(slots)
     if missing_before:
-        payload = {
-            "last_question": question,
-            "user_input": text,
-            "known_slots": slots,
-        }
-        slots, transport_question = await complete_slots(payload, missing_before)
+        slots, transport_question = await complete_slots(slots, missing_before)
     else:
         logger.info("All slots filled, skipping completion API call")
         transport_question = None
@@ -175,7 +147,6 @@ async def handle_slots(
         await message.answer(SERVICE_ERROR_MESSAGE)
         return
     missing = get_missing_slots(slots)
-    low_conf = get_low_confidence_slots(slots)
 
     changed_msg = ""
     if changed:
@@ -185,7 +156,7 @@ async def handle_slots(
         ]
         changed_msg = "Изменил " + ", ".join(parts) + ".\n"
 
-    if not changed and all(not v for k, v in slots.items() if k != "confidence"):
+    if not changed and all(not v for v in slots.values()):
         text = await generate_fallback(message.text, DEFAULT_FALLBACK)
         await message.answer(text)
         return
@@ -197,16 +168,6 @@ async def handle_slots(
             question_text = await generate_question(
                 missing[0], DEFAULT_QUESTIONS[missing[0]]
             )
-        state["last_question"] = question_text
-        try:
-            await set_user_state(uid, state)
-        except StateStorageError as e:
-            logger.exception("Failed to save state: %s", e)
-        await message.answer(changed_msg + question_text)
-    elif low_conf:
-        question_text = await generate_question(
-            low_conf[0], DEFAULT_QUESTIONS[low_conf[0]]
-        )
         state["last_question"] = question_text
         try:
             await set_user_state(uid, state)
@@ -386,14 +347,7 @@ async def handle_message(message: Message):
             slots, changed = await update_slots(uid, message.text, session_data)
             missing_before = get_missing_slots(slots)
             if missing_before:
-                payload = {
-                    "last_question": None,
-                    "user_input": message.text,
-                    "known_slots": slots,
-                }
-                slots, transport_question = await complete_slots(
-                    payload, missing_before
-                )
+                slots, transport_question = await complete_slots(slots, missing_before)
             else:
                 logger.info("All slots filled, skipping completion API call")
                 transport_question = None
@@ -407,7 +361,6 @@ async def handle_message(message: Message):
                 changed_msg = "Изменил " + ", ".join(parts) + ".\n"
 
             missing = get_missing_slots(slots)
-            low_conf = get_low_confidence_slots(slots)
             if missing:
                 if transport_question and "transport" in missing:
                     question_text = transport_question
@@ -415,16 +368,6 @@ async def handle_message(message: Message):
                     question_text = await generate_question(
                         missing[0], DEFAULT_QUESTIONS[missing[0]]
                     )
-                state["last_question"] = question_text
-                try:
-                    await set_user_state(uid, state)
-                except StateStorageError as e:
-                    logger.exception("Failed to save state: %s", e)
-                await message.answer(changed_msg + question_text)
-            elif low_conf:
-                question_text = await generate_question(
-                    low_conf[0], DEFAULT_QUESTIONS[low_conf[0]]
-                )
                 state["last_question"] = question_text
                 try:
                     await set_user_state(uid, state)

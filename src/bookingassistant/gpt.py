@@ -1,13 +1,13 @@
 import asyncio
 import logging
 import ssl
-from pathlib import Path
 from typing import Any
 
 import aiohttp
 import certifi
 
 from .config import YANDEX_IAM_TOKEN, YANDEX_FOLDER_ID
+from .texts import BASE_PROMPT
 
 API_URL = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
 MODEL_URI = f"gpt://{YANDEX_FOLDER_ID}/yandexgpt-lite"
@@ -26,7 +26,6 @@ async def generate_text(
     prompt: str,
     *,
     temperature: float = 0.5,
-    top_p: float = 1.0,
     max_tokens: int = 100,
     timeout: int = 15,
 ) -> str:
@@ -40,7 +39,6 @@ async def generate_text(
         "completionOptions": {
             "stream": False,
             "temperature": temperature,
-            "topP": top_p,
             "maxTokens": max_tokens,
         },
         "messages": [{"role": "user", "text": prompt}],
@@ -66,18 +64,6 @@ async def generate_text(
     return ""
 
 
-PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
-
-
-def load_prompt(name: str) -> str:
-    """Return prompt text loaded from prompts directory."""
-    with open(PROMPTS_DIR / name, encoding="utf-8") as f:
-        return f.read().strip()
-
-
-NLG_PROMPT = load_prompt("nlg.txt")
-
-
 def build_prompt(extra: str) -> str:
     """Attach shared header to task-specific part."""
-    return f"{NLG_PROMPT} {extra}".strip()
+    return f"{BASE_PROMPT} {extra}".strip()

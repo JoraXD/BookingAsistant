@@ -16,7 +16,6 @@ dependencies = [
     "SQLAlchemy>=2",
     "fpdf2",
     "certifi",
-    "pydantic",
 ]
 
 [tool.pytest.ini_options]

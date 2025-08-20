@@ -47,12 +47,7 @@ async def test_question_on_missing_transport():
     }
     with aioresponses() as m:
         m.post(parser.API_URL, exception=aiohttp.ClientError, repeat=True)
-        payload = {
-            "last_question": None,
-            "user_input": "",
-            "known_slots": slots,
-        }
-        updated, question = await parser.complete_slots(payload, ["transport"])
+        updated, question = await parser.complete_slots(slots, ["transport"])
         assert ("POST", URL(parser.API_URL)) in m.requests
     assert updated["transport"] is None
     assert question == parser.TRANSPORT_QUESTION_FALLBACK
@@ -67,15 +62,7 @@ async def test_complete_slots_skipped_when_full():
         "transport": "bus",
     }
     with aioresponses() as m:
-        payload = {
-            "last_question": None,
-            "user_input": "",
-            "known_slots": slots,
-        }
-        updated, question = await parser.complete_slots(payload, [])
+        updated, question = await parser.complete_slots(slots, [])
         assert ("POST", URL(parser.API_URL)) not in m.requests
-    assert updated["from"] == slots["from"]
-    assert updated["to"] == slots["to"]
-    assert updated["date"] == slots["date"]
-    assert updated["transport"] == slots["transport"]
+    assert updated == slots
     assert question is None

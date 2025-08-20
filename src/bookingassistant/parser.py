@@ -6,7 +6,6 @@ from typing import Dict, Optional
 
 import aiohttp
 import asyncio
-from pydantic import ValidationError
 
 from .gpt import (
     API_URL,
@@ -14,12 +13,18 @@ from .gpt import (
     build_prompt,
     create_session,
     generate_text,
-    load_prompt,
 )
-from .texts import TRANSPORT_QUESTION_FALLBACK
+from .texts import (
+    SLOTS_PROMPT_TEMPLATE,
+    COMPLETE_PROMPT_TEMPLATE,
+    QUESTION_PROMPT,
+    TRANSPORT_QUESTION_FALLBACK,
+    CONFIRM_PROMPT,
+    FALLBACK_PROMPT,
+    YESNO_PROMPT,
+    HISTORY_PROMPT,
+)
 from .config import YANDEX_IAM_TOKEN
-from .models import SlotsModel, DEFAULT_CONFIDENCE
-from .utils import normalize_transport, validate_city
 
 logger = logging.getLogger(__name__)
 
@@ -34,14 +39,9 @@ WEEKDAYS_RU = [
     "воскресенье",
 ]
 TODAY_WEEKDAY = WEEKDAYS_RU[datetime.now().weekday()]
-
-PARSE_SLOTS_PROMPT = load_prompt("parse_slots.txt")
-QUESTION_PROMPT = load_prompt("question.txt")
-CONFIRM_PROMPT = load_prompt("confirm.txt")
-FALLBACK_PROMPT = load_prompt("fallback.txt")
-YESNO_PROMPT = load_prompt("yesno.txt")
-HISTORY_PROMPT = load_prompt("history.txt")
-COMPLETE_PROMPT_TEMPLATE = load_prompt("complete_slots.txt")
+SLOTS_PROMPT = SLOTS_PROMPT_TEMPLATE.replace("{today_date}", TODAY_DATE).replace(
+    "{today_weekday}", TODAY_WEEKDAY
+)
 COMPLETE_PROMPT = COMPLETE_PROMPT_TEMPLATE.replace("{today_date}", TODAY_DATE).replace(
     "{today_weekday}", TODAY_WEEKDAY
 )
@@ -108,100 +108,124 @@ async def parse_slots(
     if question:
         text = f"Вопрос: {question}\nОтвет: {text}"
     logger.info("User message: %s", text)
-    prompt = f"{PARSE_SLOTS_PROMPT}\nТекст: {text}\nJSON:"
-    for attempt in range(2):
-        try:
-            answer = await generate_text(
-                prompt,
-                temperature=0.1,
-                top_p=0.5,
-                max_tokens=2000,
-                timeout=30,
-            )
-            logger.info("Yandex response: %s", answer)
-            model = SlotsModel.model_validate_json(_extract_json(answer))
-            result = model.model_dump(by_alias=True)
-            result["transport"] = normalize_transport(result.get("transport"))
-            return result
-        except (json.JSONDecodeError, ValidationError) as e:
-            logger.warning("Failed to parse slots: %s", e)
-            if attempt == 0:
-                prompt += (
-                    "\nверни строго JSON по схеме {'from': str, 'to': str, 'date': str, "
-                    "'transport': 'bus|train|plane', 'confidence': {'from': float, 'to': float, 'date': float, 'transport': float}} без лишнего текста"
+    headers = {
+        "Authorization": f"Bearer {YANDEX_IAM_TOKEN}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "modelUri": MODEL_URI,
+        "completionOptions": {
+            "stream": False,
+            "temperature": 0.2,
+            "maxTokens": 2000,
+        },
+        "messages": [
+            {"role": "system", "text": build_prompt(SLOTS_PROMPT)},
+            {"role": "user", "text": text},
+        ],
+    }
+    try:
+        async with create_session() as session:
+            async with session.post(
+                API_URL, headers=headers, json=payload, timeout=30
+            ) as response:
+                response.raise_for_status()
+                data = await response.json()
+                answer = (
+                    data.get("result", {})
+                    .get("alternatives", [{}])[0]
+                    .get("message", {})
+                    .get("text", "")
                 )
-                continue
-    result = SlotsModel().model_dump(by_alias=True)
-    result["transport"] = normalize_transport(result.get("transport"))
-    return result
+                logger.info("Yandex response: %s", answer)
+                slots = json.loads(_extract_json(answer))
+                return {
+                    "from": slots.get("origin") or slots.get("from"),
+                    "to": slots.get("destination") or slots.get("to"),
+                    "date": slots.get("date"),
+                    "transport": slots.get("transport"),
+                }
+    except (asyncio.TimeoutError, aiohttp.ClientError) as e:
+        logger.exception("Failed to parse slots: %s", e)
+    except Exception as e:
+        logger.exception("Failed to parse slots: %s", e)
+    return {"from": None, "to": None, "date": None, "transport": None}
 
 
 async def complete_slots(
-    payload: Dict[str, Optional[str]],
+    slots: Dict[str, Optional[str]],
     missing: list[str],
 ) -> tuple[Dict[str, Optional[str]], Optional[str]]:
     """Дополняет или исправляет уже известные слоты через YandexGPT.
 
-    ``payload`` должен содержать ключи ``last_question``, ``user_input`` и
-    ``known_slots``. В модель отправляются только эти данные без истории
-    диалога, что ограничивает размер контекста запроса.
+    Принимает список незаполненных ``missing`` слотов и запрашивает модель
+    только по ним. Если список пуст, запрос к API не выполняется и текущие
+    данные возвращаются без изменений.
 
     Возвращает кортеж ``(slots, question)``, где ``question`` содержит текст
     уточняющего вопроса по транспорту, если он так и не был распознан.
     """
-
-    slots = payload.get("known_slots", {})
     logger.info("Current slots: %s, missing: %s", slots, missing)
 
     if not missing:
         logger.info("No missing slots, skipping completion API call")
         return slots, None
 
-    data = {
-        "last_question": payload.get("last_question"),
-        "user_input": payload.get("user_input"),
-        "known_slots": slots,
+    headers = {
+        "Authorization": f"Bearer {YANDEX_IAM_TOKEN}",
+        "Content-Type": "application/json",
     }
-    prompt = build_prompt(
-        f"{COMPLETE_PROMPT}\n{json.dumps(data, ensure_ascii=False)}\nJSON:"
-    )
-
+    payload = {
+        "modelUri": MODEL_URI,
+        "completionOptions": {
+            "stream": False,
+            "temperature": 0.2,
+            "maxTokens": 2000,
+        },
+        "messages": [
+            {"role": "system", "text": build_prompt(COMPLETE_PROMPT)},
+            {
+                "role": "user",
+                "text": json.dumps(
+                    {k: slots.get(k) for k in missing}, ensure_ascii=False
+                ),
+            },
+        ],
+    }
     question: Optional[str] = None
-    result = dict(slots)
-    confidence = result.get("confidence", DEFAULT_CONFIDENCE.copy())
-
+    result = slots
     try:
-        answer = await generate_text(
-            prompt,
-            temperature=0.2,
-            top_p=0.5,
-            max_tokens=2000,
-            timeout=30,
-        )
-        logger.info("Yandex completion: %s", answer)
-        try:
-            updated = SlotsModel.model_validate_json(
-                _extract_json(answer)
-            ).model_dump(by_alias=True)
-            for key in missing:
-                if updated.get(key):
-                    result[key] = updated[key]
-                if updated.get("confidence") and key in updated["confidence"]:
-                    confidence[key] = updated["confidence"][key]
-        except (json.JSONDecodeError, ValidationError) as e:
-            logger.warning("Failed to parse completion: %s", e)
+        async with create_session() as session:
+            async with session.post(
+                API_URL, headers=headers, json=payload, timeout=30
+            ) as response:
+                response.raise_for_status()
+                data = await response.json()
+                answer = (
+                    data.get("result", {})
+                    .get("alternatives", [{}])[0]
+                    .get("message", {})
+                    .get("text", "")
+                )
+                logger.info("Yandex completion: %s", answer)
+                updated = json.loads(_extract_json(answer))
+
+                mapping = {
+                    "from": updated.get("origin") or updated.get("from"),
+                    "to": updated.get("destination") or updated.get("to"),
+                    "date": updated.get("date"),
+                    "transport": updated.get("transport"),
+                }
+                for key in missing:
+                    if mapping.get(key):
+                        result[key] = mapping[key]
     except (asyncio.TimeoutError, aiohttp.ClientError) as e:
         logger.exception("Failed to complete slots: %s", e)
-    except Exception as e:  # pragma: no cover - unexpected
+    except Exception as e:
         logger.exception("Failed to complete slots: %s", e)
 
     if "transport" in missing and not result.get("transport"):
         question = await generate_question("transport", TRANSPORT_QUESTION_FALLBACK)
-
-    result["confidence"] = confidence
-    result["transport"] = normalize_transport(result.get("transport"))
-    result["from"] = await validate_city(result.get("from"))
-    result["to"] = await validate_city(result.get("to"))
 
     return result, question
 
