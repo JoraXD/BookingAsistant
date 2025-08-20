@@ -6,7 +6,7 @@ from typing import Any
 import aiohttp
 import certifi
 
-from .config import YANDEX_IAM_TOKEN, YANDEX_FOLDER_ID
+from .config import YANDEX_API_KEY, YANDEX_FOLDER_ID
 from .texts import BASE_PROMPT
 
 API_URL = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
@@ -31,7 +31,7 @@ async def generate_text(
 ) -> str:
     """Call YandexGPT and return the generated text."""
     headers = {
-        "Authorization": f"Bearer {YANDEX_IAM_TOKEN}",
+        "Authorization": f"Api-Key {YANDEX_API_KEY}",
         "Content-Type": "application/json",
     }
     payload: dict[str, Any] = {

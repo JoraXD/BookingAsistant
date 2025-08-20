@@ -6,7 +6,7 @@ from aioresponses import aioresponses
 from yarl import URL
 
 os.environ.setdefault("TELEGRAM_BOT_TOKEN", "x")
-os.environ.setdefault("YANDEX_IAM_TOKEN", "x")
+os.environ.setdefault("YANDEX_API_KEY", "x")
 os.environ.setdefault("YANDEX_FOLDER_ID", "x")
 
 import bookingassistant.parser as parser
