@@ -1,5 +1,6 @@
 """Загрузка переменных окружения и общие настройки бота."""
 
+import logging
 import os
 
 from dotenv import load_dotenv
@@ -15,13 +16,17 @@ MANAGER_CHAT_ID = os.getenv("MANAGER_CHAT_ID")
 PAYMENT_DETAILS = os.getenv("PAYMENT_DETAILS", "реквизиты не указаны")
 YANDEX_OAUTH_TOKEN = os.getenv("YANDEX_OAUTH_TOKEN")
 
-print("TELEGRAM_BOT_TOKEN:", TELEGRAM_BOT_TOKEN)
-print("YANDEX_IAM_TOKEN:", YANDEX_IAM_TOKEN)
-print("YANDEX_FOLDER_ID:", YANDEX_FOLDER_ID)
-print("MANAGER_BOT_TOKEN:", MANAGER_BOT_TOKEN)
-print("MANAGER_CHAT_ID:", MANAGER_CHAT_ID)
-print("PAYMENT_DETAILS:", PAYMENT_DETAILS)
-print("YANDEX_OAUTH_TOKEN:", YANDEX_OAUTH_TOKEN)
+def log_loaded_config() -> None:
+    """Вывести все загруженные значения переменных окружения."""
+    logger = logging.getLogger(__name__)
+    logger.info("TELEGRAM_BOT_TOKEN: %s", TELEGRAM_BOT_TOKEN)
+    logger.info("YANDEX_IAM_TOKEN: %s", YANDEX_IAM_TOKEN)
+    logger.info("YANDEX_FOLDER_ID: %s", YANDEX_FOLDER_ID)
+    logger.info("MANAGER_BOT_TOKEN: %s", MANAGER_BOT_TOKEN)
+    logger.info("MANAGER_CHAT_ID: %s", MANAGER_CHAT_ID)
+    logger.info("PAYMENT_DETAILS: %s", PAYMENT_DETAILS)
+    logger.info("YANDEX_OAUTH_TOKEN: %s", YANDEX_OAUTH_TOKEN)
+
 
 if not TELEGRAM_BOT_TOKEN:
     raise RuntimeError("TELEGRAM_BOT_TOKEN is not set")
