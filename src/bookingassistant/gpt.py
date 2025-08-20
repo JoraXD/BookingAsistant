@@ -55,11 +55,15 @@ async def refresh_iam_token() -> str:
 async def get_valid_iam_token() -> str:
     """Get valid IAM token, refresh if expired."""
     global _iam_token, _token_expires
-    
+
     async with _token_lock:
+        if not YANDEX_OAUTH_TOKEN:
+            return _iam_token
         # Если токен истек или скоро истечет (менее 5 минут), обновляем
-        if (_token_expires is None or 
-            datetime.now() > _token_expires - timedelta(minutes=5)):
+        if (
+            _token_expires is None
+            or datetime.now() > _token_expires - timedelta(minutes=5)
+        ):
             return await refresh_iam_token()
         return _iam_token
 
@@ -80,7 +84,7 @@ async def generate_text(
             "Authorization": f"Bearer {iam_token}",
             "Content-Type": "application/json",
         }
-        
+
         payload: dict[str, Any] = {
             "modelUri": MODEL_URI,
             "completionOptions": {
@@ -90,7 +94,10 @@ async def generate_text(
             },
             "messages": [{"role": "user", "text": prompt}],
         }
-        
+
+        logging.info("Request headers: %s", headers)
+        logging.info("Request payload: %s", payload)
+
         async with create_session() as session:
             async with session.post(
                 API_URL, headers=headers, json=payload, timeout=timeout
