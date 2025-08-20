@@ -10,7 +10,12 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.types import Message
 
-from .config import TELEGRAM_BOT_TOKEN, MANAGER_BOT_TOKEN, MANAGER_CHAT_ID
+from .config import (
+    TELEGRAM_BOT_TOKEN,
+    MANAGER_BOT_TOKEN,
+    MANAGER_CHAT_ID,
+    log_loaded_config,
+)
 from .texts import (
     DEFAULT_QUESTIONS,
     EXTRA_QUESTIONS,
@@ -51,6 +56,7 @@ from .state_storage import (
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+log_loaded_config()
 
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
 dp = Dispatcher()
