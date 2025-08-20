@@ -13,7 +13,6 @@ dependencies = [
     "aioresponses",
     "pytest-asyncio",
     "asyncpg",
-    "SQLAlchemy>=2",
     "fpdf2",
     "certifi",
 ]

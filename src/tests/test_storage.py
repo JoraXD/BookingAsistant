@@ -3,7 +3,7 @@ import importlib
 import tempfile
 
 os.environ["TELEGRAM_BOT_TOKEN"] = os.environ.get("TELEGRAM_BOT_TOKEN", "123:abc")
-os.environ["YANDEX_API_KEY"] = os.environ.get("YANDEX_API_KEY", "x")
+os.environ["YANDEX_IAM_TOKEN"] = os.environ.get("YANDEX_IAM_TOKEN", "x")
 os.environ["YANDEX_FOLDER_ID"] = os.environ.get("YANDEX_FOLDER_ID", "x")
 
 tmp = tempfile.NamedTemporaryFile(delete=False)

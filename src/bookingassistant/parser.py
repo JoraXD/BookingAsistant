@@ -24,7 +24,7 @@ from .texts import (
     YESNO_PROMPT,
     HISTORY_PROMPT,
 )
-from .config import YANDEX_API_KEY
+from .config import YANDEX_IAM_TOKEN
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +109,7 @@ async def parse_slots(
         text = f"Вопрос: {question}\nОтвет: {text}"
     logger.info("User message: %s", text)
     headers = {
-        "Authorization": f"Api-Key {YANDEX_API_KEY}",
+        "Authorization": f"Bearer {YANDEX_IAM_TOKEN}",
         "Content-Type": "application/json",
     }
     payload = {
@@ -172,7 +172,7 @@ async def complete_slots(
         return slots, None
 
     headers = {
-        "Authorization": f"Api-Key {YANDEX_API_KEY}",
+        "Authorization": f"Bearer {YANDEX_IAM_TOKEN}",
         "Content-Type": "application/json",
     }
     payload = {
@@ -253,7 +253,7 @@ def _heuristic_history(text: str) -> Dict[str, Optional[str]]:
 async def parse_history_request(text: str) -> Dict[str, Optional[str]]:
     """Return structured history command using YandexGPT if available."""
     headers = {
-        "Authorization": f"Api-Key {YANDEX_API_KEY}",
+        "Authorization": f"Bearer {YANDEX_IAM_TOKEN}",
         "Content-Type": "application/json",
     }
     payload = {
@@ -300,7 +300,7 @@ async def parse_history_request(text: str) -> Dict[str, Optional[str]]:
 async def parse_yes_no(text: str) -> str:
     """Return 'yes', 'no' or 'unknown' for arbitrary confirmation text."""
     headers = {
-        "Authorization": f"Api-Key {YANDEX_API_KEY}",
+        "Authorization": f"Bearer {YANDEX_IAM_TOKEN}",
         "Content-Type": "application/json",
     }
     payload = {

@@ -3,7 +3,7 @@ import importlib
 import pytest
 
 os.environ.setdefault("TELEGRAM_BOT_TOKEN", "x")
-os.environ.setdefault("YANDEX_API_KEY", "x")
+os.environ.setdefault("YANDEX_IAM_TOKEN", "x")
 os.environ.setdefault("YANDEX_FOLDER_ID", "x")
 
 import aiohttp

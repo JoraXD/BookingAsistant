@@ -12,7 +12,7 @@ Telegram-бот для интерактивного бронирования п�
 
 ```
 TELEGRAM_BOT_TOKEN=your_telegram_token
-YANDEX_API_KEY=your_yandex_api_key
+YANDEX_IAM_TOKEN=your_yandex_iam_token
 YANDEX_FOLDER_ID=your_folder_id
 MANAGER_BOT_TOKEN=manager_bot_token
 MANAGER_CHAT_ID=manager_chat_id
