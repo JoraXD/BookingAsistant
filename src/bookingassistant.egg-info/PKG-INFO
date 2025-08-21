@@ -1,0 +1,12 @@
+Metadata-Version: 2.4
+Name: bookingassistant
+Version: 0.1.0
+Requires-Dist: aiogram
+Requires-Dist: python-dotenv
+Requires-Dist: dateparser
+Requires-Dist: aiohttp
+Requires-Dist: aioresponses
+Requires-Dist: pytest-asyncio
+Requires-Dist: asyncpg
+Requires-Dist: fpdf2
+Requires-Dist: certifi

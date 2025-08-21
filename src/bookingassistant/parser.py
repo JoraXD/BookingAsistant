@@ -124,8 +124,6 @@ async def parse_slots(
             {"role": "user", "text": text},
         ],
     }
-    logger.info("Request headers: %s", headers)
-    logger.info("Request payload: %s", payload)
     try:
         async with create_session() as session:
             async with session.post(
@@ -194,8 +192,6 @@ async def complete_slots(
             },
         ],
     }
-    logger.info("Request headers: %s", headers)
-    logger.info("Request payload: %s", payload)
     question: Optional[str] = None
     result = slots
     try:
@@ -272,8 +268,6 @@ async def parse_history_request(text: str) -> Dict[str, Optional[str]]:
             {"role": "user", "text": text},
         ],
     }
-    logger.info("Request headers: %s", headers)
-    logger.info("Request payload: %s", payload)
     try:
         async with create_session() as session:
             async with session.post(
@@ -320,8 +314,6 @@ async def parse_yes_no(text: str) -> str:
             {"role": "user", "text": build_prompt(YESNO_PROMPT.format(text=text))},
         ],
     }
-    logger.info("Request headers: %s", headers)
-    logger.info("Request payload: %s", payload)
     try:
         async with create_session() as session:
             async with session.post(
