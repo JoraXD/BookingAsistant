@@ -15,6 +15,7 @@ dependencies = [
     "asyncpg",
     "fpdf2",
     "certifi",
+    "sqlalchemy>=2",
 ]
 
 [tool.pytest.ini_options]
