@@ -51,6 +51,9 @@ COMPLETE_PROMPT = COMPLETE_PROMPT_TEMPLATE.replace("{today_date}", TODAY_DATE).r
 def _question_matches_slot(slot: str, text: str) -> bool:
     """Simple heuristic check that question text matches the requested slot."""
     low = text.lower()
+    # Must look like a question and not a confirmation/summary
+    if "?" not in text or any(p in low for p in ["подтверд", "правильно ли", "верно ли"]):
+        return False
     if slot == "from":
         # should mention departure, not destination
         return not any(word in low for word in ["куда", "пункт назначения"])
