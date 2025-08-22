@@ -87,7 +87,8 @@ async def greet_if_needed(message: Message):
     uid = message.from_user.id
     now = datetime.now(timezone.utc)
     last = last_seen.get(uid)
-    if not last or now - last > timedelta(hours=2):
+    # Приветствуем пользователя только один раз в сутки
+    if not last or now.date() != last.date():
         await message.answer(GREETING_MESSAGE)
     last_seen[uid] = now
 
