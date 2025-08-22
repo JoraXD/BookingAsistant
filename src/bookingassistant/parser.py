@@ -90,15 +90,53 @@ def parse_transport(text: str) -> Optional[str]:
 
 
 def _extract_json(text: str) -> str:
-    """Return JSON string from YandexGPT answer."""
+    """Return the first valid JSON object from YandexGPT answer.
+
+    Models sometimes return extra data around JSON or even several JSON
+    objects one after another. ``json.loads`` fails on such strings with
+    ``JSONDecodeError: Extra data``.  This helper extracts the first
+    decodable JSON object so the caller can safely parse it.
+    """
     text = text.strip()
     if text.startswith("```"):
+        # Strip code fences like ```json
         text = text.strip("`")
         text = text.lstrip("json").strip()
-    match = re.search(r"\{.*\}", text, re.DOTALL)
-    if match:
-        return match.group(0)
-    return text
+
+    # Iterate over potential JSON objects and return the first valid one
+    start = None
+    depth = 0
+    result = None
+    for idx, char in enumerate(text):
+        if char == "{":
+            if depth == 0:
+                start = idx
+            depth += 1
+        elif char == "}":
+            if depth == 0:
+                continue
+            depth -= 1
+            if depth == 0 and start is not None:
+                candidate = text[start : idx + 1]
+                try:
+                    obj = json.loads(candidate)
+                    if isinstance(obj, dict) and any(k for k in obj.keys()):
+                        result = candidate
+                except json.JSONDecodeError:
+                    pass
+                start = None
+    return result or text
+
+
+def _safe_int(value, default: int = 0) -> int:
+    """Return ``value`` as positive int or ``default`` if not possible."""
+    try:
+        result = int(value)
+        if result > 0:
+            return result
+    except (TypeError, ValueError):
+        pass
+    return default
 
 
 async def parse_slots(
@@ -283,12 +321,15 @@ async def parse_history_request(text: str) -> Dict[str, Optional[str]]:
                 )
                 logger.info("History request result: %s", answer)
                 parsed = json.loads(_extract_json(answer))
-                action = parsed.get("action", "").strip()
+                if not isinstance(parsed, dict):
+                    parsed = {}
+                parsed = {k: v for k, v in parsed.items() if isinstance(k, str) and k}
+                action = str(parsed.get("action", "")).strip()
                 if action:
                     return {
                         "action": action,
-                        "destination": parsed.get("destination", "").strip(),
-                        "limit": int(parsed.get("limit", 5) or 5),
+                        "destination": str(parsed.get("destination", "")).strip(),
+                        "limit": _safe_int(parsed.get("limit"), default=5),
                     }
     except (asyncio.TimeoutError, aiohttp.ClientError) as e:
         logger.exception("Failed to parse history request: %s", e)
