@@ -1,7 +1,7 @@
 import logging
 from typing import Dict, Optional
 
-from .parser import parse_slots
+from .parser import parse_slots, parse_transport
 from .utils import normalize_date
 
 logger = logging.getLogger(__name__)
@@ -50,11 +50,31 @@ async def update_slots(
     logger.info("Editing slots for %s: %s", user_id, message)
 
     parsed = await parse_slots(message, question)
+    low_msg = message.lower()
+
+    # Validate and override date/transport with local heuristics based on
+    # the actual user message so that the bot does not invent unseen data.
     user_date = normalize_date(message)
     if user_date:
         parsed["date"] = user_date
-    elif parsed.get("date"):
-        parsed["date"] = normalize_date(parsed["date"]) or parsed["date"]
+    else:
+        parsed["date"] = None
+
+    user_transport = parse_transport(message)
+    if user_transport:
+        parsed["transport"] = user_transport
+    else:
+        parsed["transport"] = None
+
+    # Drop origin/destination values that are not literally mentioned in
+    # the user's message to prevent hallucinated cities from overwriting
+    # existing slots.
+    for key in ("from", "to"):
+        value = parsed.get(key)
+        if value:
+            prefix = value.lower()[:4]
+            if prefix and prefix not in low_msg:
+                parsed[key] = None
 
     changed = {}
     for key in ["from", "to", "date", "transport"]:
