@@ -316,6 +316,19 @@ async def handle_message(message: Message):
 
         choice = await parse_yes_no(message.text)
         if choice == "yes":
+            missing = get_missing_slots(state)
+            if missing:
+                question_text = await generate_question(
+                    missing[0], DEFAULT_QUESTIONS[missing[0]]
+                )
+                state["last_question"] = question_text
+                state.pop("confirm", None)
+                try:
+                    await set_user_state(uid, state)
+                except StateStorageError as e:
+                    logger.exception("Failed to save state: %s", e)
+                await message.answer(question_text)
+                return
             state.pop("confirm", None)
             state["extra_questions"] = list(EXTRA_QUESTIONS.keys())
             try:
