@@ -48,10 +48,24 @@ COMPLETE_PROMPT = COMPLETE_PROMPT_TEMPLATE.replace("{today_date}", TODAY_DATE).r
 )
 
 
+def _question_matches_slot(slot: str, text: str) -> bool:
+    """Simple heuristic check that question text matches the requested slot."""
+    low = text.lower()
+    if slot == "from":
+        # should mention departure, not destination
+        return not any(word in low for word in ["куда", "пункт назначения"])
+    if slot == "to":
+        # should mention destination, not origin
+        return not any(word in low for word in ["откуда", "отправ"])
+    return True
+
+
 async def generate_question(slot: str, fallback: str) -> str:
     """Return friendly question for missing slot via YandexGPT."""
     prompt = build_prompt(QUESTION_PROMPT.format(slot=slot))
-    text = await generate_text(prompt)
+    text = await generate_text(prompt) or ""
+    if not _question_matches_slot(slot, text):
+        return fallback
     return text or fallback
 
 
