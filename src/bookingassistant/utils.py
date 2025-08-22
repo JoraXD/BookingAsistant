@@ -7,7 +7,7 @@ import dateparser
 
 from .gpt import build_prompt, generate_text
 from .maps import DAYS_MAP, TRANSPORT_RU
-from .texts import TIME_PROMPT
+from .prompts import TIME_PROMPT
 
 
 def next_weekday(target_word: str) -> str:
