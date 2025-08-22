@@ -12,7 +12,7 @@ async def update_slots(
     message: str,
     session_data: Dict[int, Dict[str, Optional[str]]],
     question: Optional[str] = None,
-) -> tuple[Dict[str, Optional[str]], Dict[str, str], bool]:
+) -> tuple[Dict[str, Optional[str]], Dict[str, str], bool, set[str]]:
     """Update saved slots for a user based on correction message.
 
     The function re-parses the incoming ``message`` to detect which booking
@@ -32,9 +32,10 @@ async def update_slots(
     Returns
     -------
     tuple
-        ``(slots, changed, used_llm)`` where ``slots`` is the updated slot
-        dictionary, ``changed`` contains only the fields that were modified and
-        ``used_llm`` indicates whether a call to YandexGPT was performed.
+        ``(slots, changed, used_llm, touched)`` where ``slots`` is the updated
+        slot dictionary, ``changed`` contains only the fields that were
+        modified, ``used_llm`` indicates whether a call to YandexGPT was
+        performed, and ``touched`` lists the slots mentioned in the message.
     """
     # Current user slots or empty defaults
     slots = session_data.get(
@@ -50,6 +51,7 @@ async def update_slots(
     logger.info("Editing slots for %s: %s", user_id, message)
 
     pre = pre_extract_slots(message)
+    touched = {k for k, v in pre.items() if v}
     conflict = any(
         slots.get(k) and pre.get(k) and slots.get(k) != pre.get(k)
         for k in ["from", "to", "date", "transport"]
@@ -60,6 +62,7 @@ async def update_slots(
 
     if filled < 3 or conflict:
         parsed = await parse_slots(message, question)
+        touched = {k for k, v in parsed.items() if v}
         used_llm = True
         user_date = normalize_date(message)
         if user_date:
@@ -70,6 +73,7 @@ async def update_slots(
         for k, v in pre.items():
             if v and not parsed.get(k):
                 parsed[k] = v
+                touched.add(k)
 
     changed = {}
     for key in ["from", "to", "date", "transport"]:
@@ -89,4 +93,4 @@ async def update_slots(
     else:
         logger.info("No slot updates for %s", user_id)
 
-    return slots, changed, used_llm
+    return slots, changed, used_llm, touched

@@ -161,21 +161,23 @@ async def parse_slots(
 async def complete_slots(
     slots: Dict[str, Optional[str]],
     missing: list[str],
-) -> tuple[Dict[str, Optional[str]], Optional[str]]:
+) -> tuple[Dict[str, Optional[str]], Optional[str], list[str]]:
     """Дополняет или исправляет уже известные слоты через YandexGPT.
 
     Принимает список незаполненных ``missing`` слотов и запрашивает модель
     только по ним. Если список пуст, запрос к API не выполняется и текущие
     данные возвращаются без изменений.
 
-    Возвращает кортеж ``(slots, question)``, где ``question`` содержит текст
-    уточняющего вопроса по транспорту, если он так и не был распознан.
+    Возвращает кортеж ``(slots, question, auto_filled)``, где ``question``
+    содержит текст уточняющего вопроса по транспорту, если он так и не был
+    распознан, а ``auto_filled`` перечисляет слоты, значения которых были
+    предложены моделью без участия пользователя.
     """
     logger.info("Current slots: %s, missing: %s", slots, missing)
 
     if not missing:
         logger.info("No missing slots, skipping completion API call")
-        return slots, None
+        return slots, None, []
 
     headers = {
         "Authorization": f"Bearer {YANDEX_IAM_TOKEN}",
@@ -200,6 +202,7 @@ async def complete_slots(
     }
     question: Optional[str] = None
     result = slots
+    auto_filled: list[str] = []
     try:
         async with create_session() as session:
             async with session.post(
@@ -225,6 +228,7 @@ async def complete_slots(
                 for key in missing:
                     if mapping.get(key):
                         result[key] = mapping[key]
+                        auto_filled.append(key)
     except (asyncio.TimeoutError, aiohttp.ClientError) as e:
         logger.exception("Failed to complete slots: %s", e)
     except Exception as e:
@@ -233,7 +237,7 @@ async def complete_slots(
     if "transport" in missing and not result.get("transport"):
         question = await generate_question("transport", TRANSPORT_QUESTION_FALLBACK)
 
-    return result, question
+    return result, question, auto_filled
 
 
 # --- History requests ------------------------------------------------------

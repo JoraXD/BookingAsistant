@@ -48,7 +48,7 @@ async def test_no_llm_called(monkeypatch):
     monkeypatch.setattr(parser, "generate_text", fake_generate_text)
 
     session_data = {}
-    slots, changed, used_llm = await update_slots(
+    slots, changed, used_llm, touched = await update_slots(
         1, "Я завтра в Минск на автобусе из Гродно", session_data
     )
 
