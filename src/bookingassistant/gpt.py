@@ -7,7 +7,7 @@ import aiohttp
 import certifi
 
 from .config import YANDEX_IAM_TOKEN, YANDEX_FOLDER_ID
-from .texts import BASE_PROMPT
+from .prompts import BASE_PROMPT
 
 API_URL = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
 MODEL_URI = f"gpt://{YANDEX_FOLDER_ID}/yandexgpt-lite"

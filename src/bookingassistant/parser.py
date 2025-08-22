@@ -14,16 +14,16 @@ from .gpt import (
     create_session,
     generate_text,
 )
-from .texts import (
+from .prompts import (
     SLOTS_PROMPT_TEMPLATE,
     COMPLETE_PROMPT_TEMPLATE,
     QUESTION_PROMPT,
-    TRANSPORT_QUESTION_FALLBACK,
     CONFIRM_PROMPT,
     FALLBACK_PROMPT,
     YESNO_PROMPT,
     HISTORY_PROMPT,
 )
+from .texts import TRANSPORT_QUESTION_FALLBACK
 from .config import YANDEX_IAM_TOKEN
 
 logger = logging.getLogger(__name__)
