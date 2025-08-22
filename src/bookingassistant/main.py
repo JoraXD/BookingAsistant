@@ -30,7 +30,6 @@ from .texts import (
     REQUEST_SENT_MESSAGE,
 )
 from .parser import (
-    complete_slots,
     parse_history_request,
     generate_question,
     generate_confirmation,
@@ -133,13 +132,6 @@ async def handle_slots(
     session_data = {uid: state}
     slots, changed = await update_slots(uid, text, session_data, question)
 
-    missing_before = get_missing_slots(slots)
-    if missing_before:
-        slots, transport_question = await complete_slots(slots, missing_before)
-    else:
-        logger.info("All slots filled, skipping completion API call")
-        transport_question = None
-
     state = session_data[uid] = slots
     try:
         await set_user_state(uid, state)
@@ -163,12 +155,9 @@ async def handle_slots(
         return
 
     if missing:
-        if transport_question and "transport" in missing:
-            question_text = transport_question
-        else:
-            question_text = await generate_question(
-                missing[0], DEFAULT_QUESTIONS[missing[0]]
-            )
+        question_text = await generate_question(
+            missing[0], DEFAULT_QUESTIONS[missing[0]]
+        )
         state["last_question"] = question_text
         try:
             await set_user_state(uid, state)
@@ -340,12 +329,6 @@ async def handle_message(message: Message):
             state.pop("confirm", None)
             session_data = {uid: state}
             slots, changed = await update_slots(uid, message.text, session_data)
-            missing_before = get_missing_slots(slots)
-            if missing_before:
-                slots, transport_question = await complete_slots(slots, missing_before)
-            else:
-                logger.info("All slots filled, skipping completion API call")
-                transport_question = None
             state = session_data[uid]
             changed_msg = ""
             if changed:
@@ -357,12 +340,9 @@ async def handle_message(message: Message):
 
             missing = get_missing_slots(slots)
             if missing:
-                if transport_question and "transport" in missing:
-                    question_text = transport_question
-                else:
-                    question_text = await generate_question(
-                        missing[0], DEFAULT_QUESTIONS[missing[0]]
-                    )
+                question_text = await generate_question(
+                    missing[0], DEFAULT_QUESTIONS[missing[0]]
+                )
                 state["last_question"] = question_text
                 try:
                     await set_user_state(uid, state)
