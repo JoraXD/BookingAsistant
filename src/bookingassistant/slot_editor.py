@@ -1,8 +1,10 @@
 import logging
+import re
 from typing import Dict, Optional, Iterable
 
 from .parser import parse_slots, parse_transport
 from .utils import normalize_date
+from .maps import DAYS_MAP
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +25,37 @@ def _city_in_message(city: str, message: str) -> bool:
     aliases = set(CITY_ALIASES.get(low_city, ()))
     aliases.add(low_city[:4])
     return any(alias and alias in message for alias in aliases)
+
+
+def _detect_city_role(city: str, message: str) -> Optional[str]:
+    """Return 'from' or 'to' if preposition before ``city`` indicates direction."""
+    low_msg = message.lower()
+    aliases = [city.lower(), *CITY_ALIASES.get(city.lower(), ())]
+    for alias in aliases:
+        if not alias:
+            continue
+        pattern = rf"\b(из|от|в|во|на)\s+{re.escape(alias)}\w*"
+        match = re.search(pattern, low_msg)
+        if match:
+            prep = match.group(1)
+            if prep in {"из", "от"}:
+                return "from"
+            if prep in {"в", "во", "на"}:
+                return "to"
+    return None
+
+
+def _date_in_message(text: str) -> bool:
+    """Return True if ``text`` contains explicit date or weekday words."""
+    low = text.lower()
+    if re.search(r"\b(сегодня|завтра|послезавтра)\b", low):
+        return True
+    for word in DAYS_MAP:
+        if re.search(rf"\b{re.escape(word)}\w*", low):
+            return True
+    if re.search(r"\d{1,2}[./]\d{1,2}", low) or re.search(r"\b\d{4}-\d{2}-\d{2}\b", low):
+        return True
+    return False
 
 
 async def update_slots(
@@ -75,7 +108,7 @@ async def update_slots(
     user_date = normalize_date(message)
     if user_date:
         parsed["date"] = user_date
-    else:
+    elif not _date_in_message(message):
         parsed["date"] = None
 
     user_transport = parse_transport(message)
@@ -85,11 +118,31 @@ async def update_slots(
         parsed["transport"] = None
 
     # Drop origin/destination values that are not mentioned in the user's
-    # message to prevent hallucinated cities from overwriting existing slots.
+    # message or contradict the detected prepositions to prevent hallucinated
+    # cities from overwriting existing slots.
     for key in ("from", "to"):
         value = parsed.get(key)
-        if value and not _city_in_message(value, low_msg):
+        if not value:
+            continue
+        role = _detect_city_role(value, low_msg)
+        if role and role != key:
             parsed[key] = None
+            continue
+        if not _city_in_message(value, low_msg):
+            parsed[key] = None
+
+    # If only one city remains, assign it to destination by default unless
+    # preposition explicitly marks it as origin.
+    unique = {c for c in (parsed.get("from"), parsed.get("to")) if c}
+    if len(unique) == 1:
+        city = unique.pop()
+        role = _detect_city_role(city, low_msg)
+        if role == "from":
+            parsed["from"] = city
+            parsed["to"] = None
+        else:
+            parsed["from"] = None
+            parsed["to"] = city
 
     changed = {}
     for key in ["from", "to", "date", "transport"]:
