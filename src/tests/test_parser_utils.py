@@ -15,6 +15,11 @@ def test_extract_json_skips_empty_keys():
     assert parser._extract_json(text) == '{"action": "show"}'
 
 
+def test_extract_json_accepts_empty_object_with_tail():
+    text = '{}\nВопрос неполный'
+    assert parser._extract_json(text) == '{}'
+
+
 @pytest.mark.asyncio
 async def test_parse_history_request_handles_messy_answer():
     answer_text = '{"": 1}\n{"action": "show", "limit": "", "destination": ""}'
@@ -26,3 +31,13 @@ async def test_parse_history_request_handles_messy_answer():
         data = await parser.parse_history_request("покажи поездки")
     assert data["action"] == "show"
     assert data["limit"] == 5
+
+
+@pytest.mark.asyncio
+async def test_parse_history_request_empty_json_with_text():
+    answer_text = '{}\nВопрос неполный'
+    payload = {"result": {"alternatives": [{"message": {"text": answer_text}}]}}
+    with aioresponses() as m:
+        m.post(parser.API_URL, payload=payload)
+        data = await parser.parse_history_request("покажи поездки")
+    assert data["action"] == "show"

@@ -90,11 +90,11 @@ def parse_transport(text: str) -> Optional[str]:
 
 
 def _extract_json(text: str) -> str:
-    """Return the first valid JSON object from YandexGPT answer.
+    """Return the last valid JSON object from YandexGPT answer.
 
     Models sometimes return extra data around JSON or even several JSON
     objects one after another. ``json.loads`` fails on such strings with
-    ``JSONDecodeError: Extra data``.  This helper extracts the first
+    ``JSONDecodeError: Extra data``. This helper extracts the last
     decodable JSON object so the caller can safely parse it.
     """
     text = text.strip()
@@ -103,7 +103,7 @@ def _extract_json(text: str) -> str:
         text = text.strip("`")
         text = text.lstrip("json").strip()
 
-    # Iterate over potential JSON objects and return the first valid one
+    # Iterate over potential JSON objects and return the last valid one
     start = None
     depth = 0
     result = None
@@ -120,8 +120,9 @@ def _extract_json(text: str) -> str:
                 candidate = text[start : idx + 1]
                 try:
                     obj = json.loads(candidate)
-                    if isinstance(obj, dict) and any(k for k in obj.keys()):
-                        result = candidate
+                    if isinstance(obj, dict):
+                        if any(k for k in obj.keys()) or result is None:
+                            result = candidate
                 except json.JSONDecodeError:
                     pass
                 start = None
