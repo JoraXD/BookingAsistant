@@ -283,11 +283,8 @@ async def handle_message(message: Message):
                 }
             )
             await notify_manager(trip_id, slots, message.from_user)
-            response = {
-                "message": REQUEST_SENT_MESSAGE,
-            }
             await message.answer(
-                f"\n```\n{json.dumps(response, ensure_ascii=False, indent=2)}\n```"
+                REQUEST_SENT_MESSAGE
             )
         elif choice == "no":
             slots = dict(state)
@@ -309,11 +306,8 @@ async def handle_message(message: Message):
                 }
             )
             await notify_manager(trip_id, slots, message.from_user)
-            response = {
-                "message": REQUEST_SENT_MESSAGE,
-            }
             await message.answer(
-                f"\n```\n{json.dumps(response, ensure_ascii=False, indent=2)}\n```"
+                REQUEST_SENT_MESSAGE
             )
         else:
             await message.answer(YESNO_PROMPT_USER)
