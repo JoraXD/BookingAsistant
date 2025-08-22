@@ -2,7 +2,7 @@ import logging
 from typing import Dict, Optional
 
 from .parser import parse_slots
-from .utils import normalize_date
+from .utils import normalize_date, pre_extract_slots
 
 logger = logging.getLogger(__name__)
 
@@ -12,7 +12,7 @@ async def update_slots(
     message: str,
     session_data: Dict[int, Dict[str, Optional[str]]],
     question: Optional[str] = None,
-) -> tuple[Dict[str, Optional[str]], Dict[str, str]]:
+) -> tuple[Dict[str, Optional[str]], Dict[str, str], bool]:
     """Update saved slots for a user based on correction message.
 
     The function re-parses the incoming ``message`` to detect which booking
@@ -32,9 +32,9 @@ async def update_slots(
     Returns
     -------
     tuple
-        ``(slots, changed)`` where ``slots`` is the updated slot dictionary and
-        ``changed`` contains only the fields that were modified. Filling
-        previously empty slots is not considered a modification.
+        ``(slots, changed, used_llm)`` where ``slots`` is the updated slot
+        dictionary, ``changed`` contains only the fields that were modified and
+        ``used_llm`` indicates whether a call to YandexGPT was performed.
     """
     # Current user slots or empty defaults
     slots = session_data.get(
@@ -49,12 +49,27 @@ async def update_slots(
 
     logger.info("Editing slots for %s: %s", user_id, message)
 
-    parsed = await parse_slots(message, question)
-    user_date = normalize_date(message)
-    if user_date:
-        parsed["date"] = user_date
-    elif parsed.get("date"):
-        parsed["date"] = normalize_date(parsed["date"]) or parsed["date"]
+    pre = pre_extract_slots(message)
+    conflict = any(
+        slots.get(k) and pre.get(k) and slots.get(k) != pre.get(k)
+        for k in ["from", "to", "date", "transport"]
+    )
+    filled = sum(1 for v in pre.values() if v)
+    used_llm = False
+    parsed = pre
+
+    if filled < 3 or conflict:
+        parsed = await parse_slots(message, question)
+        used_llm = True
+        user_date = normalize_date(message)
+        if user_date:
+            parsed["date"] = user_date
+        elif parsed.get("date"):
+            parsed["date"] = normalize_date(parsed["date"]) or parsed["date"]
+        # fallback to heuristic values for missing fields
+        for k, v in pre.items():
+            if v and not parsed.get(k):
+                parsed[k] = v
 
     changed = {}
     for key in ["from", "to", "date", "transport"]:
@@ -74,4 +89,4 @@ async def update_slots(
     else:
         logger.info("No slot updates for %s", user_id)
 
-    return slots, changed
+    return slots, changed, used_llm

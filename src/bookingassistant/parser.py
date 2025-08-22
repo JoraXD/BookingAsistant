@@ -14,6 +14,7 @@ from .gpt import (
     create_session,
     generate_text,
 )
+from .utils import detect_transport
 from .prompts import (
     SLOTS_PROMPT_TEMPLATE,
     COMPLETE_PROMPT_TEMPLATE,
@@ -77,16 +78,7 @@ async def generate_fallback(text: str, fallback: str) -> str:
 
 def parse_transport(text: str) -> Optional[str]:
     """Return normalized transport type from free-form text or ``None``."""
-    text = text.lower()
-    if re.search(r"\b(автобус|маршрутк|atlas|шкипер|bus|бус|бас)\w*", text):
-        return "bus"
-    if re.search(
-        r"\b(самол[eё]т|самолетик|птичк|авиабилет|plane|полететь|лететь)\w*", text
-    ):
-        return "plane"
-    if re.search(r"\b(поезд|электричк|ржд|сапсан|train|ж.?д)\w*", text):
-        return "train"
-    return None
+    return detect_transport(text)
 
 
 def _extract_json(text: str) -> str:

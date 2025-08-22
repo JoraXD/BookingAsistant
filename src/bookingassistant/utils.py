@@ -1,13 +1,68 @@
 import logging
 import re
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, Dict
 
 import dateparser
 
 from .gpt import build_prompt, generate_text
 from .maps import DAYS_MAP, TRANSPORT_RU
 from .prompts import TIME_PROMPT
+
+
+def detect_transport(text: str) -> Optional[str]:
+    """Return normalized transport type from free-form text or ``None``."""
+    text = text.lower()
+    if re.search(r"\b(автобус|маршрутк|atlas|шкипер|bus|бус|бас)\w*", text):
+        return "bus"
+    if re.search(
+        r"\b(самол[eё]т|самолетик|птичк|авиабилет|plane|полететь|лететь)\w*", text
+    ):
+        return "plane"
+    if re.search(r"\b(поезд|электричк|ржд|сапсан|train|ж.?д)\w*", text):
+        return "train"
+    return None
+
+
+def pre_extract_slots(text: str) -> Dict[str, Optional[str]]:
+    """Быстрая эвристическая попытка извлечь основные слоты из текста."""
+    transport = detect_transport(text)
+    date = normalize_date(text)
+    if not date:
+        try:
+            from dateparser.search import search_dates
+
+            found = search_dates(text, languages=["ru"])
+            if found:
+                date = normalize_date(found[0][0])
+        except Exception:
+            pass
+
+    origin = destination = None
+
+    # Patterns: "из X в Y" or "в Y из X"
+    match = re.search(
+        r"из\s+([A-Za-zА-Яа-яЁё\s-]+)\s+в\s+([A-Za-zА-Яа-яЁё\s-]+)",
+        text,
+        flags=re.IGNORECASE,
+    )
+    def _clean(name: str) -> str:
+        return re.split(r"\s+на\s+", name, 1)[0].strip().title()
+
+    if match:
+        origin = _clean(match.group(1))
+        destination = _clean(match.group(2))
+    else:
+        match = re.search(
+            r"в\s+([A-Za-zА-Яа-яЁё\s-]+)\s+из\s+([A-Za-zА-Яа-яЁё\s-]+)",
+            text,
+            flags=re.IGNORECASE,
+        )
+        if match:
+            destination = _clean(match.group(1))
+            origin = _clean(match.group(2))
+
+    return {"from": origin, "to": destination, "date": date, "transport": transport}
 
 
 def next_weekday(target_word: str) -> str:
