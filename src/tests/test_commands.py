@@ -14,6 +14,8 @@ import bookingassistant.parser as parser
 
 importlib.reload(parser)
 
+from bookingassistant.slot_editor import update_slots
+
 
 @pytest.mark.asyncio
 async def test_show_command():
@@ -36,3 +38,22 @@ async def test_cancel_command():
         data["destination"].lower() == "москву"
         or data["destination"].lower() == "москва"
     )
+
+
+@pytest.mark.asyncio
+async def test_no_llm_called(monkeypatch):
+    async def fake_generate_text(*args, **kwargs):
+        raise AssertionError("LLM should not be called")
+
+    monkeypatch.setattr(parser, "generate_text", fake_generate_text)
+
+    session_data = {}
+    slots, changed, used_llm, touched = await update_slots(
+        1, "Я завтра в Минск на автобусе из Гродно", session_data
+    )
+
+    assert not used_llm
+    assert slots["from"].lower() == "гродно"
+    assert slots["to"].lower() == "минск"
+    assert slots["transport"] == "bus"
+    assert slots["date"]

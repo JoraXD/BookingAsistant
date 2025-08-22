@@ -14,6 +14,7 @@ from .gpt import (
     create_session,
     generate_text,
 )
+from .utils import detect_transport
 from .prompts import (
     SLOTS_PROMPT_TEMPLATE,
     COMPLETE_PROMPT_TEMPLATE,
@@ -47,10 +48,27 @@ COMPLETE_PROMPT = COMPLETE_PROMPT_TEMPLATE.replace("{today_date}", TODAY_DATE).r
 )
 
 
+def _question_matches_slot(slot: str, text: str) -> bool:
+    """Simple heuristic check that question text matches the requested slot."""
+    low = text.lower()
+    # Must look like a question and not a confirmation/summary
+    if "?" not in text or any(p in low for p in ["подтверд", "правильно ли", "верно ли"]):
+        return False
+    if slot == "from":
+        # should mention departure, not destination
+        return not any(word in low for word in ["куда", "пункт назначения"])
+    if slot == "to":
+        # should mention destination, not origin
+        return not any(word in low for word in ["откуда", "отправ"])
+    return True
+
+
 async def generate_question(slot: str, fallback: str) -> str:
     """Return friendly question for missing slot via YandexGPT."""
     prompt = build_prompt(QUESTION_PROMPT.format(slot=slot))
-    text = await generate_text(prompt)
+    text = await generate_text(prompt) or ""
+    if not _question_matches_slot(slot, text):
+        return fallback
     return text or fallback
 
 
@@ -77,16 +95,7 @@ async def generate_fallback(text: str, fallback: str) -> str:
 
 def parse_transport(text: str) -> Optional[str]:
     """Return normalized transport type from free-form text or ``None``."""
-    text = text.lower()
-    if re.search(r"\b(автобус|маршрутк|atlas|шкипер|bus|бус|бас)\w*", text):
-        return "bus"
-    if re.search(
-        r"\b(самол[eё]т|самолетик|птичк|авиабилет|plane|полететь|лететь)\w*", text
-    ):
-        return "plane"
-    if re.search(r"\b(поезд|электричк|ржд|сапсан|train|ж.?д)\w*", text):
-        return "train"
-    return None
+    return detect_transport(text)
 
 
 def _extract_json(text: str) -> str:
@@ -155,21 +164,23 @@ async def parse_slots(
 async def complete_slots(
     slots: Dict[str, Optional[str]],
     missing: list[str],
-) -> tuple[Dict[str, Optional[str]], Optional[str]]:
+) -> tuple[Dict[str, Optional[str]], Optional[str], list[str]]:
     """Дополняет или исправляет уже известные слоты через YandexGPT.
 
     Принимает список незаполненных ``missing`` слотов и запрашивает модель
     только по ним. Если список пуст, запрос к API не выполняется и текущие
     данные возвращаются без изменений.
 
-    Возвращает кортеж ``(slots, question)``, где ``question`` содержит текст
-    уточняющего вопроса по транспорту, если он так и не был распознан.
+    Возвращает кортеж ``(slots, question, auto_filled)``, где ``question``
+    содержит текст уточняющего вопроса по транспорту, если он так и не был
+    распознан, а ``auto_filled`` перечисляет слоты, значения которых были
+    предложены моделью без участия пользователя.
     """
     logger.info("Current slots: %s, missing: %s", slots, missing)
 
     if not missing:
         logger.info("No missing slots, skipping completion API call")
-        return slots, None
+        return slots, None, []
 
     headers = {
         "Authorization": f"Bearer {YANDEX_IAM_TOKEN}",
@@ -194,6 +205,7 @@ async def complete_slots(
     }
     question: Optional[str] = None
     result = slots
+    auto_filled: list[str] = []
     try:
         async with create_session() as session:
             async with session.post(
@@ -219,6 +231,7 @@ async def complete_slots(
                 for key in missing:
                     if mapping.get(key):
                         result[key] = mapping[key]
+                        auto_filled.append(key)
     except (asyncio.TimeoutError, aiohttp.ClientError) as e:
         logger.exception("Failed to complete slots: %s", e)
     except Exception as e:
@@ -227,7 +240,7 @@ async def complete_slots(
     if "transport" in missing and not result.get("transport"):
         question = await generate_question("transport", TRANSPORT_QUESTION_FALLBACK)
 
-    return result, question
+    return result, question, auto_filled
 
 
 # --- History requests ------------------------------------------------------

@@ -130,17 +130,27 @@ async def handle_slots(
             return
     question = state.pop("last_question", None)
 
+    auto_slots = set(state.get("auto_slots", []))
     session_data = {uid: state}
-    slots, changed = await update_slots(uid, text, session_data, question)
+    slots, changed, used_llm, touched = await update_slots(
+        uid, text, session_data, question
+    )
+    auto_slots -= touched
 
     missing_before = get_missing_slots(slots)
-    if missing_before:
-        slots, transport_question = await complete_slots(slots, missing_before)
+    missing_before = list(dict.fromkeys(missing_before + list(auto_slots)))
+
+    if missing_before and used_llm:
+        slots, transport_question, auto_filled = await complete_slots(
+            slots, missing_before
+        )
+        auto_slots.update(auto_filled)
     else:
-        logger.info("All slots filled, skipping completion API call")
+        logger.info("Skipping completion API call")
         transport_question = None
 
     state = session_data[uid] = slots
+    state["auto_slots"] = list(auto_slots)
     try:
         await set_user_state(uid, state)
     except StateStorageError as e:
@@ -148,6 +158,7 @@ async def handle_slots(
         await message.answer(SERVICE_ERROR_MESSAGE)
         return
     missing = get_missing_slots(slots)
+    missing = list(dict.fromkeys(missing + list(auto_slots)))
 
     changed_msg = ""
     if changed:
@@ -328,6 +339,7 @@ async def handle_message(message: Message):
         choice = await parse_yes_no(message.text)
         if choice == "yes":
             state.pop("confirm", None)
+            state.pop("auto_slots", None)
             state["extra_questions"] = list(EXTRA_QUESTIONS.keys())
             try:
                 await set_user_state(uid, state)
@@ -338,15 +350,24 @@ async def handle_message(message: Message):
             await message.answer(EXTRA_QUESTIONS[state["extra_questions"][0]])
         else:
             state.pop("confirm", None)
+            auto_slots = set(state.get("auto_slots", []))
             session_data = {uid: state}
-            slots, changed = await update_slots(uid, message.text, session_data)
+            slots, changed, used_llm, touched = await update_slots(
+                uid, message.text, session_data
+            )
+            auto_slots -= touched
             missing_before = get_missing_slots(slots)
-            if missing_before:
-                slots, transport_question = await complete_slots(slots, missing_before)
+            missing_before = list(dict.fromkeys(missing_before + list(auto_slots)))
+            if missing_before and used_llm:
+                slots, transport_question, auto_filled = await complete_slots(
+                    slots, missing_before
+                )
+                auto_slots.update(auto_filled)
             else:
-                logger.info("All slots filled, skipping completion API call")
+                logger.info("Skipping completion API call")
                 transport_question = None
             state = session_data[uid]
+            state["auto_slots"] = list(auto_slots)
             changed_msg = ""
             if changed:
                 parts = [
@@ -356,6 +377,7 @@ async def handle_message(message: Message):
                 changed_msg = "Изменил " + ", ".join(parts) + ".\n"
 
             missing = get_missing_slots(slots)
+            missing = list(dict.fromkeys(missing + list(auto_slots)))
             if missing:
                 if transport_question and "transport" in missing:
                     question_text = transport_question
