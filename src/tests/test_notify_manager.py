@@ -23,8 +23,8 @@ async def test_notify_manager_includes_id():
     main.manager_bot.send_message = AsyncMock()
     user = User(id=1, is_bot=False, first_name="Test", username="tester")
     slots = {
-        "from": "A",
-        "to": "B",
+        "origin": "A",
+        "destination": "B",
         "date": "2025-01-01",
         "transport": "bus",
         "time": "08:00",

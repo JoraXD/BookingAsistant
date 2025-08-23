@@ -28,7 +28,7 @@ def _city_in_message(city: str, message: str) -> bool:
 
 
 def _detect_city_role(city: str, message: str) -> Optional[str]:
-    """Return 'from' or 'to' if preposition before ``city`` indicates direction."""
+    """Return 'origin' or 'destination' if preposition before ``city`` indicates direction."""
     low_msg = message.lower()
     aliases = [city.lower(), *CITY_ALIASES.get(city.lower(), ())]
     for alias in aliases:
@@ -39,9 +39,9 @@ def _detect_city_role(city: str, message: str) -> Optional[str]:
         if match:
             prep = match.group(1)
             if prep in {"из", "от"}:
-                return "from"
+                return "origin"
             if prep in {"в", "во", "на"}:
-                return "to"
+                return "destination"
     return None
 
 
@@ -64,9 +64,9 @@ def _expected_slot(question: Optional[str]) -> Optional[str]:
         return None
     q = question.lower()
     if any(word in q for word in ("куда", "назнач", "пункт назначения")):
-        return "to"
+        return "destination"
     if any(word in q for word in ("откуда", "из какого", "город отправления", "выезжа")):
-        return "from"
+        return "origin"
     if any(word in q for word in ("когда", "дат", "числ")):
         return "date"
     if any(word in q for word in ("транспорт", "автобус", "поезд", "самол")):
@@ -107,8 +107,8 @@ async def update_slots(
     slots = session_data.get(
         user_id,
         {
-            "from": None,
-            "to": None,
+            "origin": None,
+            "destination": None,
             "date": None,
             "transport": None,
         },
@@ -145,9 +145,9 @@ async def update_slots(
     # Drop origin/destination values that are not mentioned in the user's
     # message or contradict the detected prepositions to prevent hallucinated
     # cities from overwriting existing slots. If a city clearly has the
-    # opposite role (e.g. the model put it in ``from`` but the message says
+    # opposite role (e.g. the model put it in ``origin`` but the message says
     # "в Москву"), move it to the proper slot instead of discarding.
-    for key in ("from", "to"):
+    for key in ("origin", "destination"):
         value = parsed.get(key)
         if not value:
             continue
@@ -159,8 +159,8 @@ async def update_slots(
         if not role and not _city_in_message(value, low_msg):
             parsed[key] = None
 
-    if expected in {"from", "to"}:
-        other = "to" if expected == "from" else "from"
+    if expected in {"origin", "destination"}:
+        other = "destination" if expected == "origin" else "origin"
         if not parsed.get(expected) and parsed.get(other):
             role = _detect_city_role(parsed[other], low_msg)
             if not role:
@@ -169,25 +169,25 @@ async def update_slots(
 
     # If only one city remains, assign it to destination by default unless
     # preposition explicitly marks it as origin.
-    unique = {c for c in (parsed.get("from"), parsed.get("to")) if c}
+    unique = {c for c in (parsed.get("origin"), parsed.get("destination")) if c}
     if len(unique) == 1:
         city = unique.pop()
         role = _detect_city_role(city, low_msg)
-        if role == "from":
-            parsed["from"] = city
-            parsed["to"] = None
-        elif role == "to":
-            parsed["from"] = None
-            parsed["to"] = city
-        elif expected in {"from", "to"}:
+        if role == "origin":
+            parsed["origin"] = city
+            parsed["destination"] = None
+        elif role == "destination":
+            parsed["origin"] = None
+            parsed["destination"] = city
+        elif expected in {"origin", "destination"}:
             parsed[expected] = city
-            parsed["to" if expected == "from" else "from"] = None
+            parsed["destination" if expected == "origin" else "origin"] = None
         else:
-            parsed["from"] = None
-            parsed["to"] = city
+            parsed["origin"] = None
+            parsed["destination"] = city
 
     changed = {}
-    for key in ["from", "to", "date", "transport"]:
+    for key in ["origin", "destination", "date", "transport"]:
         value = parsed.get(key)
         if value:
             # If slot already had some value and user provided a new one,

@@ -60,7 +60,7 @@ last_seen: Dict[int, datetime] = {}
 
 
 # Слоты, необходимые для первоначального запроса
-REQUIRED_SLOTS = ["from", "to", "date", "transport"]
+REQUIRED_SLOTS = ["origin", "destination", "date", "transport"]
 
 
 def get_missing_slots(slots: Dict[str, Optional[str]]):
@@ -167,7 +167,7 @@ async def handle_slots(
     else:
         summary = await generate_confirmation(
             slots,
-            f"Отлично, вот что получилось: {display_transport(slots['transport'])} {slots['from']} → {slots['to']} {slots['date']}. Всё верно?",
+            f"Отлично, вот что получилось: {display_transport(slots['transport'])} {slots['origin']} → {slots['destination']} {slots['date']}. Всё верно?",
         )
         await message.answer(changed_msg + summary)
         state["confirm"] = True
@@ -257,16 +257,16 @@ async def handle_message(message: Message):
                 await message.answer(SERVICE_ERROR_MESSAGE)
                 return
             if slots.get("transport", "").lower() in {"автобус", "bus", "автобусы"}:
-                url = build_routes_url(slots["from"], slots["to"], slots["date"])
-                if await link_has_routes(slots["from"], slots["to"], slots["date"]):
+                url = build_routes_url(slots["origin"], slots["destination"], slots["date"])
+                if await link_has_routes(slots["origin"], slots["destination"], slots["date"]):
                     await message.answer(url)
                 else:
                     await message.answer(ROUTES_NOT_FOUND_MESSAGE)
             trip_id = save_trip(
                 {
                     "user_id": uid,
-                    "origin": slots["from"],
-                    "destination": slots["to"],
+                    "origin": slots["origin"],
+                    "destination": slots["destination"],
                     "date": slots["date"],
                     "transport": slots["transport"],
                     "status": "pending",
@@ -288,8 +288,8 @@ async def handle_message(message: Message):
             trip_id = save_trip(
                 {
                     "user_id": uid,
-                    "origin": slots["from"],
-                    "destination": slots["to"],
+                    "origin": slots["origin"],
+                    "destination": slots["destination"],
                     "date": slots["date"],
                     "transport": slots["transport"],
                     "status": "pending",
@@ -364,9 +364,9 @@ async def handle_message(message: Message):
                 await message.answer(changed_msg + question_text)
             else:
                 summary = await generate_confirmation(
-                    slots,
-                    f"Отлично, вот что получилось: {display_transport(slots['transport'])} {slots['from']} → {slots['to']} {slots['date']}. Всё верно?",
-                )
+            slots,
+            f"Отлично, вот что получилось: {display_transport(slots['transport'])} {slots['origin']} → {slots['destination']} {slots['date']}. Всё верно?",
+        )
                 await message.answer(changed_msg + summary)
                 state["confirm"] = True
                 try:

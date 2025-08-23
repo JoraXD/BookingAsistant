@@ -58,8 +58,8 @@ async def generate_confirmation(slots: Dict[str, Optional[str]], fallback: str) 
     """Return booking confirmation message via YandexGPT."""
     prompt = build_prompt(
         CONFIRM_PROMPT.format(
-            origin=slots.get("from", ""),
-            destination=slots.get("to", ""),
+            origin=slots.get("origin", ""),
+            destination=slots.get("destination", ""),
             date=slots.get("date", ""),
             transport=slots.get("transport", ""),
         )
@@ -179,8 +179,8 @@ async def parse_slots(
                 logger.info("Yandex response: %s", answer)
                 slots = json.loads(_extract_json(answer))
                 return {
-                    "from": slots.get("origin") or slots.get("from"),
-                    "to": slots.get("destination") or slots.get("to"),
+                    "origin": slots.get("origin"),
+                    "destination": slots.get("destination"),
                     "date": slots.get("date"),
                     "transport": slots.get("transport"),
                 }
@@ -188,7 +188,7 @@ async def parse_slots(
         logger.exception("Failed to parse slots: %s", e)
     except Exception as e:
         logger.exception("Failed to parse slots: %s", e)
-    return {"from": None, "to": None, "date": None, "transport": None}
+    return {"origin": None, "destination": None, "date": None, "transport": None}
 
 
 async def complete_slots(
@@ -250,8 +250,8 @@ async def complete_slots(
                 updated = json.loads(_extract_json(answer))
 
                 mapping = {
-                    "from": updated.get("origin") or updated.get("from"),
-                    "to": updated.get("destination") or updated.get("to"),
+                    "origin": updated.get("origin"),
+                    "destination": updated.get("destination"),
                     "date": updated.get("date"),
                     "transport": updated.get("transport"),
                 }
