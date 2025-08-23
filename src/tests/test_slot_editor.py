@@ -96,3 +96,28 @@ async def test_update_slots_drops_hallucinated_date(monkeypatch):
     slots, _ = await slot_editor.update_slots(1, "в москву", session)
 
     assert slots["date"] is None
+
+
+@pytest.mark.asyncio
+async def test_update_slots_converts_placeholder_strings(monkeypatch):
+    session = {1: {"from": "Питер", "to": None, "date": None, "transport": None}}
+
+    async def fake_parse_slots(message: str, question: str | None = None):
+        return {
+            "from": "пусто",
+            "to": "Москва",
+            "date": "none",
+            "transport": "",
+        }
+
+    monkeypatch.setattr(slot_editor, "parse_slots", fake_parse_slots)
+
+    slots, changed = await slot_editor.update_slots(1, "в москву", session)
+
+    assert slots == {
+        "from": "Питер",
+        "to": "Москва",
+        "date": None,
+        "transport": None,
+    }
+    assert changed == {}

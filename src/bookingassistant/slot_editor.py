@@ -101,6 +101,14 @@ async def update_slots(
     logger.info("Editing slots for %s: %s", user_id, message)
 
     parsed = await parse_slots(message, question)
+    for key, value in parsed.items():
+        if isinstance(value, str):
+            cleaned = value.strip().lower()
+            if cleaned in {"", "none", "null", "пусто", "нет"}:
+                parsed[key] = None
+            else:
+                parsed[key] = value.strip()
+
     low_msg = message.lower()
 
     # Validate and override date/transport with local heuristics based on
