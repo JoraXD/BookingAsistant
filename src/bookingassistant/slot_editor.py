@@ -58,6 +58,22 @@ def _date_in_message(text: str) -> bool:
     return False
 
 
+def _expected_slot(question: Optional[str]) -> Optional[str]:
+    """Infer which slot the bot asked about based on ``question`` text."""
+    if not question:
+        return None
+    q = question.lower()
+    if any(word in q for word in ("куда", "назнач", "пункт назначения")):
+        return "to"
+    if any(word in q for word in ("откуда", "из какого", "город отправления", "выезжа")):
+        return "from"
+    if any(word in q for word in ("когда", "дат", "числ")):
+        return "date"
+    if any(word in q for word in ("транспорт", "автобус", "поезд", "самол")):
+        return "transport"
+    return None
+
+
 async def update_slots(
     user_id: int,
     message: str,
@@ -110,6 +126,7 @@ async def update_slots(
                 parsed[key] = value.strip()
 
     low_msg = message.lower()
+    expected = _expected_slot(question)
 
     # Validate and override date/transport with local heuristics based on
     # the actual user message so that the bot does not invent unseen data.
@@ -142,6 +159,14 @@ async def update_slots(
         if not role and not _city_in_message(value, low_msg):
             parsed[key] = None
 
+    if expected in {"from", "to"}:
+        other = "to" if expected == "from" else "from"
+        if not parsed.get(expected) and parsed.get(other):
+            role = _detect_city_role(parsed[other], low_msg)
+            if not role:
+                parsed[expected] = parsed[other]
+                parsed[other] = None
+
     # If only one city remains, assign it to destination by default unless
     # preposition explicitly marks it as origin.
     unique = {c for c in (parsed.get("from"), parsed.get("to")) if c}
@@ -151,6 +176,12 @@ async def update_slots(
         if role == "from":
             parsed["from"] = city
             parsed["to"] = None
+        elif role == "to":
+            parsed["from"] = None
+            parsed["to"] = city
+        elif expected in {"from", "to"}:
+            parsed[expected] = city
+            parsed["to" if expected == "from" else "from"] = None
         else:
             parsed["from"] = None
             parsed["to"] = city

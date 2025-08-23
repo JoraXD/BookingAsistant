@@ -121,3 +121,37 @@ async def test_update_slots_converts_placeholder_strings(monkeypatch):
         "transport": None,
     }
     assert changed == {}
+
+
+@pytest.mark.asyncio
+async def test_update_slots_respects_question_context_for_origin(monkeypatch):
+    session = {1: {"from": None, "to": None, "date": None, "transport": None}}
+
+    async def fake_parse_slots(message: str, question: str | None = None):
+        return {"from": None, "to": "Казань", "date": None, "transport": None}
+
+    monkeypatch.setattr(slot_editor, "parse_slots", fake_parse_slots)
+
+    slots, changed = await slot_editor.update_slots(
+        1, "Казань", session, "Из какого города вы хотите отправиться?"
+    )
+
+    assert slots == {"from": "Казань", "to": None, "date": None, "transport": None}
+    assert changed == {}
+
+
+@pytest.mark.asyncio
+async def test_update_slots_respects_question_context_for_destination(monkeypatch):
+    session = {1: {"from": None, "to": None, "date": None, "transport": None}}
+
+    async def fake_parse_slots(message: str, question: str | None = None):
+        return {"from": "Казань", "to": None, "date": None, "transport": None}
+
+    monkeypatch.setattr(slot_editor, "parse_slots", fake_parse_slots)
+
+    slots, changed = await slot_editor.update_slots(
+        1, "Казань", session, "Куда планируете поехать?"
+    )
+
+    assert slots == {"from": None, "to": "Казань", "date": None, "transport": None}
+    assert changed == {}
