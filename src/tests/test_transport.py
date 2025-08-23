@@ -40,8 +40,8 @@ def test_display_transport():
 @pytest.mark.asyncio
 async def test_question_on_missing_transport():
     slots = {
-        "from": "Москва",
-        "to": "Казань",
+        "origin": "Москва",
+        "destination": "Казань",
         "date": "2025-08-05",
         "transport": None,
     }
@@ -56,8 +56,8 @@ async def test_question_on_missing_transport():
 @pytest.mark.asyncio
 async def test_complete_slots_skipped_when_full():
     slots = {
-        "from": "Москва",
-        "to": "Казань",
+        "origin": "Москва",
+        "destination": "Казань",
         "date": "2025-08-05",
         "transport": "bus",
     }
