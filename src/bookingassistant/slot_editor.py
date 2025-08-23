@@ -119,7 +119,9 @@ async def update_slots(
 
     # Drop origin/destination values that are not mentioned in the user's
     # message or contradict the detected prepositions to prevent hallucinated
-    # cities from overwriting existing slots.
+    # cities from overwriting existing slots. If a city clearly has the
+    # opposite role (e.g. the model put it in ``from`` but the message says
+    # "в Москву"), move it to the proper slot instead of discarding.
     for key in ("from", "to"):
         value = parsed.get(key)
         if not value:
@@ -127,8 +129,9 @@ async def update_slots(
         role = _detect_city_role(value, low_msg)
         if role and role != key:
             parsed[key] = None
+            parsed[role] = value
             continue
-        if not _city_in_message(value, low_msg):
+        if not role and not _city_in_message(value, low_msg):
             parsed[key] = None
 
     # If only one city remains, assign it to destination by default unless

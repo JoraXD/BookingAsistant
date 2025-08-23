@@ -45,6 +45,26 @@ async def test_update_slots_accepts_city_abbreviation(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_update_slots_reassigns_city_on_mismatch(monkeypatch):
+    session = {1: {"from": None, "to": None, "date": None, "transport": None}}
+
+    async def fake_parse_slots(message: str, question: str | None = None):
+        return {"from": "Москва", "to": None, "date": None, "transport": None}
+
+    monkeypatch.setattr(slot_editor, "parse_slots", fake_parse_slots)
+
+    slots, changed = await slot_editor.update_slots(1, "в мск", session)
+
+    assert slots == {
+        "from": None,
+        "to": "Москва",
+        "date": None,
+        "transport": None,
+    }
+    assert changed == {}
+
+
+@pytest.mark.asyncio
 async def test_update_slots_preserves_parsed_date(monkeypatch):
     session = {1: {"from": None, "to": None, "date": None, "transport": None}}
 
