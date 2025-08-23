@@ -1,8 +1,10 @@
 import logging
+import re
 from typing import Dict, Optional, Iterable
 
 from .parser import parse_slots, parse_transport
 from .utils import normalize_date
+from .maps import DAYS_MAP
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +25,53 @@ def _city_in_message(city: str, message: str) -> bool:
     aliases = set(CITY_ALIASES.get(low_city, ()))
     aliases.add(low_city[:4])
     return any(alias and alias in message for alias in aliases)
+
+
+def _detect_city_role(city: str, message: str) -> Optional[str]:
+    """Return 'from' or 'to' if preposition before ``city`` indicates direction."""
+    low_msg = message.lower()
+    aliases = [city.lower(), *CITY_ALIASES.get(city.lower(), ())]
+    for alias in aliases:
+        if not alias:
+            continue
+        pattern = rf"\b(из|от|в|во|на)\s+{re.escape(alias)}\w*"
+        match = re.search(pattern, low_msg)
+        if match:
+            prep = match.group(1)
+            if prep in {"из", "от"}:
+                return "from"
+            if prep in {"в", "во", "на"}:
+                return "to"
+    return None
+
+
+def _date_in_message(text: str) -> bool:
+    """Return True if ``text`` contains explicit date or weekday words."""
+    low = text.lower()
+    if re.search(r"\b(сегодня|завтра|послезавтра)\b", low):
+        return True
+    for word in DAYS_MAP:
+        if re.search(rf"\b{re.escape(word)}\w*", low):
+            return True
+    if re.search(r"\d{1,2}[./]\d{1,2}", low) or re.search(r"\b\d{4}-\d{2}-\d{2}\b", low):
+        return True
+    return False
+
+
+def _expected_slot(question: Optional[str]) -> Optional[str]:
+    """Infer which slot the bot asked about based on ``question`` text."""
+    if not question:
+        return None
+    q = question.lower()
+    if any(word in q for word in ("куда", "назнач", "пункт назначения")):
+        return "to"
+    if any(word in q for word in ("откуда", "из какого", "город отправления", "выезжа")):
+        return "from"
+    if any(word in q for word in ("когда", "дат", "числ")):
+        return "date"
+    if any(word in q for word in ("транспорт", "автобус", "поезд", "самол")):
+        return "transport"
+    return None
 
 
 async def update_slots(
@@ -68,14 +117,23 @@ async def update_slots(
     logger.info("Editing slots for %s: %s", user_id, message)
 
     parsed = await parse_slots(message, question)
+    for key, value in parsed.items():
+        if isinstance(value, str):
+            cleaned = value.strip().lower()
+            if cleaned in {"", "none", "null", "пусто", "нет"}:
+                parsed[key] = None
+            else:
+                parsed[key] = value.strip()
+
     low_msg = message.lower()
+    expected = _expected_slot(question)
 
     # Validate and override date/transport with local heuristics based on
     # the actual user message so that the bot does not invent unseen data.
     user_date = normalize_date(message)
     if user_date:
         parsed["date"] = user_date
-    else:
+    elif not _date_in_message(message):
         parsed["date"] = None
 
     user_transport = parse_transport(message)
@@ -85,11 +143,48 @@ async def update_slots(
         parsed["transport"] = None
 
     # Drop origin/destination values that are not mentioned in the user's
-    # message to prevent hallucinated cities from overwriting existing slots.
+    # message or contradict the detected prepositions to prevent hallucinated
+    # cities from overwriting existing slots. If a city clearly has the
+    # opposite role (e.g. the model put it in ``from`` but the message says
+    # "в Москву"), move it to the proper slot instead of discarding.
     for key in ("from", "to"):
         value = parsed.get(key)
-        if value and not _city_in_message(value, low_msg):
+        if not value:
+            continue
+        role = _detect_city_role(value, low_msg)
+        if role and role != key:
             parsed[key] = None
+            parsed[role] = value
+            continue
+        if not role and not _city_in_message(value, low_msg):
+            parsed[key] = None
+
+    if expected in {"from", "to"}:
+        other = "to" if expected == "from" else "from"
+        if not parsed.get(expected) and parsed.get(other):
+            role = _detect_city_role(parsed[other], low_msg)
+            if not role:
+                parsed[expected] = parsed[other]
+                parsed[other] = None
+
+    # If only one city remains, assign it to destination by default unless
+    # preposition explicitly marks it as origin.
+    unique = {c for c in (parsed.get("from"), parsed.get("to")) if c}
+    if len(unique) == 1:
+        city = unique.pop()
+        role = _detect_city_role(city, low_msg)
+        if role == "from":
+            parsed["from"] = city
+            parsed["to"] = None
+        elif role == "to":
+            parsed["from"] = None
+            parsed["to"] = city
+        elif expected in {"from", "to"}:
+            parsed[expected] = city
+            parsed["to" if expected == "from" else "from"] = None
+        else:
+            parsed["from"] = None
+            parsed["to"] = city
 
     changed = {}
     for key in ["from", "to", "date", "transport"]:
